@@ -319,6 +319,7 @@ export function Dashboard({ onLogout }: Props) {
   } | null>(null);
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
+  const [showAllStats, setShowAllStats] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
 
@@ -1035,12 +1036,6 @@ export function Dashboard({ onLogout }: Props) {
       out.push({ key, label, value, secondary, icon });
     };
 
-    push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
-    push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
-
-    if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-    if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-
     const session = selectedMetadata?.session ?? {};
     const metric = selectedMetadata?.activity_metrics ?? {};
     const avgPaceSec = selectedActivity.distance_m > 0
@@ -1049,7 +1044,17 @@ export function Dashboard({ onLogout }: Props) {
     const avgPaceText = formatPace(avgPaceSec, distanceSuffix);
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
-    if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart", avgPaceText !== "-" ? `${t("detail.pace")} ${avgPaceText}` : undefined);
+
+    // Primary stats — always visible, in this order.
+    push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
+    if (avgPaceText !== "-") push("avg_pace", t("detail.avgPace"), avgPaceText, "speed");
+    if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
+    push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
+    if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart");
+
+    // Secondary stats — hidden behind the "show more" toggle.
+    if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
+    if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
     if (maxHr && maxHr > 0) push("max_hr", t("detail.maxHr"), `${Math.round(maxHr)} bpm`, "heart");
 
     if (recordStats.maxAlt > 0) push("max_alt", t("detail.maxAltitude"), `${convertElevationMeters(recordStats.maxAlt, distanceUnit).toFixed(0)} ${elevationLabel(distanceUnit)}`, "mountain");
@@ -1069,7 +1074,6 @@ export function Dashboard({ onLogout }: Props) {
       );
     }
     if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
-    if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
 
     return out;
@@ -1107,6 +1111,31 @@ export function Dashboard({ onLogout }: Props) {
       };
     });
   }, [selectedMetadata?.laps, distanceDivisorValue, distanceSuffix]);
+
+  const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr"];
+  const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
+  const secondaryStats = detailStats.filter((s) => !primaryStatKeys.includes(s.key));
+
+  const renderMiniStat = (s: (typeof detailStats)[number]) => (
+    <div key={s.key} className="mini-stat">
+      <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
+        {s.icon === "clock" && <IconClock />}
+        {s.icon === "distance" && <IconDistance />}
+        {s.icon === "speed" && <IconSpeed />}
+        {s.icon === "heart" && <IconHeart />}
+        {s.icon === "mountain" && <IconMountain />}
+        {s.icon === "power" && <IconPower />}
+        {s.icon === "cadence" && <IconCadence />}
+        {s.icon === "battery" && <IconBattery />}
+        {s.icon === "avg" && <IconAvg />}
+        {s.icon === "flame" && <IconFlame />}
+        {s.icon === "vo2" && <IconVo2 />}
+      </span>
+      <span className="mini-value">{s.value}</span>
+      <span className="mini-label">{s.label}</span>
+      {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
+    </div>
+  );
 
   return (
     <div className="app-shell">
@@ -1577,28 +1606,29 @@ export function Dashboard({ onLogout }: Props) {
                     </button>
                   </div>
                 </div>
-                <div className="detail-stats-strip">
-                  {detailStats.map((s) => (
-                    <div key={s.key} className="mini-stat">
-                      <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
-                        {s.icon === "clock" && <IconClock />}
-                        {s.icon === "distance" && <IconDistance />}
-                        {s.icon === "speed" && <IconSpeed />}
-                        {s.icon === "heart" && <IconHeart />}
-                        {s.icon === "mountain" && <IconMountain />}
-                        {s.icon === "power" && <IconPower />}
-                        {s.icon === "cadence" && <IconCadence />}
-                        {s.icon === "battery" && <IconBattery />}
-                        {s.icon === "avg" && <IconAvg />}
-                        {s.icon === "flame" && <IconFlame />}
-                        {s.icon === "vo2" && <IconVo2 />}
-                      </span>
-                      <span className="mini-value">{s.value}</span>
-                      <span className="mini-label">{s.label}</span>
-                      {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
-                    </div>
-                  ))}
+                <div className="detail-stats-strip primary">
+                  {primaryStats.map(renderMiniStat)}
                 </div>
+                {secondaryStats.length > 0 && (
+                  <div className="detail-stats-more">
+                    <button
+                      type="button"
+                      className={`detail-stats-toggle ${showAllStats ? "open" : ""}`}
+                      onClick={() => setShowAllStats((v) => !v)}
+                      aria-expanded={showAllStats}
+                    >
+                      <span>{showAllStats ? t("detail.showLessStats") : t("detail.showMoreStats")}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    {showAllStats && (
+                      <div className="detail-stats-strip secondary">
+                        {secondaryStats.map(renderMiniStat)}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="detail-grid">
                 <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>

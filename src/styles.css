@@ -1405,6 +1405,18 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.detail-stats-strip.primary {
+  gap: 2.25rem;
+  align-items: flex-start;
+}
+
+.detail-stats-strip.secondary {
+  gap: 1.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
 .mini-stat {
   display: flex;
   flex-direction: column;
@@ -1432,6 +1444,54 @@ button:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   font-weight: 500;
+}
+
+/* Primary stats are larger and more prominent */
+.detail-stats-strip.primary .mini-stat .mini-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.detail-stats-strip.primary .mini-stat .mini-value {
+  font-size: 1.65rem;
+  letter-spacing: -0.5px;
+}
+
+.detail-stats-strip.primary .mini-stat .mini-label {
+  font-size: 0.72rem;
+}
+
+.detail-stats-more {
+  margin-top: 0.75rem;
+}
+
+.detail-stats-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.detail-stats-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.detail-stats-chevron {
+  transition: transform 0.2s ease;
+}
+
+.detail-stats-toggle.open .detail-stats-chevron {
+  transform: rotate(180deg);
 }
 
 .laps-table-wrap {

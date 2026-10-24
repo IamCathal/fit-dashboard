@@ -109,6 +109,8 @@
   "detail.bodyBatteryChange": "Body Battery Change",
   "detail.vo2Max": "VO2 Max",
   "detail.calories": "Calories",
+  "detail.showMoreStats": "Show more stats",
+  "detail.showLessStats": "Show less stats",
   "detail.laps": "Laps",
   "detail.smoothGraphs": "Smooth graphs",
   "detail.resetZoom": "Reset Zoom",
