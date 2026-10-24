@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
@@ -5,6 +6,7 @@ import { buildHeartRateZones } from "../lib/hrZones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { convertDistanceMeters, convertPaceMinPerKm, distanceLabel, paceLabel, type DistanceUnit } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
+import { PaceRangeSlider } from "./PaceRangeSlider";
 
 type Props = {
   records: RecordPoint[];
@@ -16,6 +18,12 @@ type Props = {
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
 };
+
+/** Slider granularity: one second expressed in minutes. */
+const PACE_RANGE_STEP = 1 / 60;
+
+/** Default half-width of the visible pace window, in minutes. */
+const DEFAULT_PACE_HALF_WINDOW_MIN = 1.5;
 
 export function ActivityChart({
   records,
@@ -56,23 +64,107 @@ export function ActivityChart({
     `<div style="display:flex;align-items:center;gap:6px;"><strong>${formatRelTime(relMs)}</strong><span style="display:inline-flex;align-items:center;border-radius:999px;padding:1px 6px;font-size:11px;background:rgba(148,163,184,0.22);">${formatAbsTime(relMs)}</span></div>`;
 
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
-  const hrSeriesData = records.map((r) => [r.timestamp_ms - t0, r.heart_rate ?? null, r.timestamp_ms, typeof r.distance_m === "number" ? r.distance_m / 1000 : null]);
-  const paceSeriesData = records.map((r, i) => {
-    const relMs = r.timestamp_ms - t0;
-    const prev = i > 0 ? records[i - 1] : undefined;
-    const dtS = prev ? (r.timestamp_ms - prev.timestamp_ms) / 1000 : 0;
-    const derivedSpeed =
-      (!r.speed_m_s && prev && typeof r.distance_m === "number" && typeof prev.distance_m === "number" && dtS > 0)
-        ? Math.max(0, (r.distance_m - prev.distance_m) / dtS)
-        : undefined;
-    const speedMs = r.speed_m_s ?? derivedSpeed;
-    const paceMinPerKm = speedMs && speedMs > 0 ? 1000 / (speedMs * 60) : null;
-    const paceMinPerUnit = paceMinPerKm == null ? null : convertPaceMinPerKm(paceMinPerKm, distanceUnit);
-    return [relMs, paceMinPerUnit, r.timestamp_ms];
-  });
+  const hrSeriesData = useMemo(
+    () => records.map((r) => [r.timestamp_ms - t0, r.heart_rate ?? null, r.timestamp_ms, typeof r.distance_m === "number" ? r.distance_m / 1000 : null]),
+    [records, t0],
+  );
+  const paceSeriesData = useMemo(
+    () => records.map((r, i) => {
+      const relMs = r.timestamp_ms - t0;
+      const prev = i > 0 ? records[i - 1] : undefined;
+      const dtS = prev ? (r.timestamp_ms - prev.timestamp_ms) / 1000 : 0;
+      const derivedSpeed =
+        (!r.speed_m_s && prev && typeof r.distance_m === "number" && typeof prev.distance_m === "number" && dtS > 0)
+          ? Math.max(0, (r.distance_m - prev.distance_m) / dtS)
+          : undefined;
+      const speedMs = r.speed_m_s ?? derivedSpeed;
+      const paceMinPerKm = speedMs && speedMs > 0 ? 1000 / (speedMs * 60) : null;
+      const paceMinPerUnit = paceMinPerKm == null ? null : convertPaceMinPerKm(paceMinPerKm, distanceUnit);
+      return [relMs, paceMinPerUnit, r.timestamp_ms] as [number, number | null, number];
+    }),
+    [records, t0, distanceUnit],
+  );
 
-  const hrSeriesSmoothed = smoothGraphs ? applyRollingAverageSeries(hrSeriesData, 1, smoothWindow) : hrSeriesData;
-  const paceSeriesSmoothed = smoothGraphs ? applyRollingAverageSeries(paceSeriesData, 1, smoothWindow) : paceSeriesData;
+  const hrSeriesSmoothed = useMemo(
+    () => (smoothGraphs ? applyRollingAverageSeries(hrSeriesData, 1, smoothWindow) : hrSeriesData),
+    [hrSeriesData, smoothGraphs, smoothWindow],
+  );
+  const paceSeriesSmoothed = useMemo(
+    () => (smoothGraphs ? applyRollingAverageSeries(paceSeriesData, 1, smoothWindow) : paceSeriesData),
+    [paceSeriesData, smoothGraphs, smoothWindow],
+  );
+
+  // Median pace is used as the centre of the default visible window because it
+  // is far less sensitive to stop/start outliers than the mean.
+  const paceStats = useMemo(() => {
+    const values: number[] = [];
+    for (const row of paceSeriesSmoothed) {
+      const value = row[1];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) values.push(value);
+    }
+    if (values.length === 0) return null;
+    values.sort((a, b) => a - b);
+    const min = values[0];
+    const max = values[values.length - 1];
+    const mid = Math.floor(values.length / 2);
+    const median = values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+    return { min, max, median };
+  }, [paceSeriesSmoothed]);
+
+  // null means "use the default window centred on the median pace".
+  const [paceWindow, setPaceWindow] = useState<{ fast: number; slow: number } | null>(null);
+  const [showPaceRange, setShowPaceRange] = useState(false);
+
+  useEffect(() => {
+    setPaceWindow(null);
+    setShowPaceRange(false);
+  }, [records, distanceUnit, smoothGraphs]);
+
+  const paceDomain = useMemo(() => {
+    if (!paceStats) return null;
+
+    // Ensure the slider always has a workable span, even for an almost
+    // perfectly constant pace.
+    const minSpan = PACE_RANGE_STEP * 10;
+    let dataMin = paceStats.min;
+    let dataMax = paceStats.max;
+    if (dataMax - dataMin < minSpan) {
+      const centre = (dataMin + dataMax) / 2;
+      dataMin = centre - minSpan / 2;
+      dataMax = centre + minSpan / 2;
+    }
+
+    const clampToData = (value: number) => Math.max(dataMin, Math.min(dataMax, value));
+    const defaultFast = clampToData(paceStats.median - DEFAULT_PACE_HALF_WINDOW_MIN);
+    const defaultSlow = clampToData(paceStats.median + DEFAULT_PACE_HALF_WINDOW_MIN);
+
+    let fast = clampToData(paceWindow ? paceWindow.fast : defaultFast);
+    let slow = clampToData(paceWindow ? paceWindow.slow : defaultSlow);
+    if (slow - fast < PACE_RANGE_STEP) {
+      fast = clampToData(paceStats.median - PACE_RANGE_STEP * 15);
+      slow = clampToData(paceStats.median + PACE_RANGE_STEP * 15);
+    }
+    if (slow - fast < PACE_RANGE_STEP) {
+      slow = fast + PACE_RANGE_STEP;
+    }
+
+    return {
+      min: dataMin,
+      max: dataMax,
+      fast,
+      slow,
+      usingDefault: paceWindow === null,
+      isFullRange:
+        fast <= dataMin + PACE_RANGE_STEP / 2 && slow >= dataMax - PACE_RANGE_STEP / 2,
+    };
+  }, [paceStats, paceWindow]);
+
+  const formatPaceMinutes = (value: number) => {
+    const totalSeconds = Math.round(Math.max(0, value) * 60);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
 
   const lapMarkers = lapTimestampsUtc
     .slice(1)
@@ -224,6 +316,7 @@ export function ActivityChart({
       type: "value",
       name: paceLabel(distanceUnit),
       inverse: true,
+      ...(paceDomain ? { min: paceDomain.fast, max: paceDomain.slow } : {}),
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -273,6 +366,80 @@ export function ActivityChart({
     <div style={{ display: "grid", gap: 12, minWidth: 0, width: "100%", overflow: "hidden" }}>
       <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
       <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      {paceDomain && (
+        <div className="pace-range-control">
+          <div className="pace-range-summary">
+            <div className="pace-range-summary-text">
+              <span className="pace-range-summary-label">{t("chart.paceRange")}</span>
+              <span className="pace-range-summary-value">
+                {formatPaceMinutes(paceDomain.fast)} – {formatPaceMinutes(paceDomain.slow)} {paceLabel(distanceUnit)}
+              </span>
+            </div>
+            <div className="pace-range-quick-actions">
+              <button
+                type="button"
+                className="btn-secondary pace-range-quick"
+                onClick={() => setPaceWindow({ fast: paceDomain.min, slow: paceDomain.max })}
+                disabled={paceDomain.isFullRange}
+              >
+                {t("chart.paceRangeShowAll")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary pace-range-quick"
+                onClick={() => setPaceWindow(null)}
+                disabled={paceDomain.usingDefault}
+              >
+                {t("chart.paceRangeShowZoomed")}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary pace-range-toggle"
+              aria-expanded={showPaceRange}
+              onClick={() => setShowPaceRange((value) => !value)}
+            >
+              {showPaceRange ? t("chart.paceRangeHide") : t("chart.paceRangeAdjust")}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </div>
+          {showPaceRange && (
+            <div className="pace-range-panel">
+              <PaceRangeSlider
+                min={paceDomain.min}
+                max={paceDomain.max}
+                fast={paceDomain.fast}
+                slow={paceDomain.slow}
+                step={PACE_RANGE_STEP}
+                ariaLabel={t("chart.paceRange")}
+                onChange={(fast, slow) => setPaceWindow({ fast, slow })}
+              />
+              <div className="pace-range-scale">
+                <span className="pace-range-scale-bound">
+                  <span className="pace-range-scale-label">{t("chart.paceRangeFastest")}</span>
+                  <strong>{formatPaceMinutes(paceDomain.min)}</strong>
+                </span>
+                <span className="pace-range-scale-bound">
+                  <span className="pace-range-scale-label">{t("chart.paceRangeSlowest")}</span>
+                  <strong>{formatPaceMinutes(paceDomain.max)}</strong>
+                </span>
+              </div>
+              <div className="pace-range-panel-footer">
+                <span className="pace-range-hint">{t("chart.paceRangeHint")}</span>
+                <button
+                  className="btn-secondary pace-range-reset"
+                  onClick={() => setPaceWindow(null)}
+                  disabled={paceDomain.usingDefault}
+                >
+                  {t("chart.paceRangeReset")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

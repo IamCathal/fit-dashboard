@@ -2461,6 +2461,211 @@ button:focus-visible {
   background: var(--accent-glow);
 }
 
+/* ── Pace Range Slider ─────────────────────────────────────────────── */
+
+.pace-range-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 0.25rem;
+}
+
+.pace-range-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+}
+
+.pace-range-summary-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pace-range-summary-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.pace-range-summary-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pace-range-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.pace-range-quick {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.pace-range-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.pace-range-toggle svg {
+  transition: transform 150ms ease;
+}
+
+.pace-range-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.pace-range-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.6rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 65%, transparent);
+}
+
+.pace-range-reset {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+}
+
+.pace-range-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  touch-action: none;
+}
+
+.pace-range-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+  cursor: pointer;
+}
+
+.pace-range-track-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f43f5e, #fb7185);
+  pointer-events: none;
+}
+
+.pace-range-thumb {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--panel-solid);
+  border: 2px solid #f43f5e;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  z-index: 2;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.pace-range-thumb:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.32);
+}
+
+.pace-range-thumb:active,
+.pace-range-thumb.dragging {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.25);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.36);
+}
+
+.pace-range-thumb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:root[data-theme="dark"] .pace-range-thumb {
+  background: #1e293b;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="dark"] .pace-range-thumb:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-theme="dark"] .pace-range-thumb:active,
+:root[data-theme="dark"] .pace-range-thumb.dragging {
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.7);
+}
+
+.pace-range-scale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pace-range-scale-bound {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.pace-range-scale-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  color: var(--text-muted);
+}
+
+.pace-range-scale-bound strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.pace-range-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pace-range-hint {
+  flex: 1;
+  min-width: 140px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 /* ── Donation Banner ───────────────────────────────────────────────── */
 
 .donation-banner {
