@@ -14,7 +14,10 @@ type Props = {
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
-const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16, 32] as const;
+const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180] as const;
+const DEFAULT_PLAYBACK_SPEED = 8;
+const DEFAULT_DURATION_PRESET = 60;
+const STEP_SECONDS = 5;
 
 const IconPlay = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -26,6 +29,20 @@ const IconPause = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="6" y="4" width="4" height="16" />
     <rect x="14" y="4" width="4" height="16" />
+  </svg>
+);
+
+const IconSkipStart = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="19 20 9 12 19 4 19 20" />
+    <line x1="5" y1="19" x2="5" y2="5" />
+  </svg>
+);
+
+const IconSkipEnd = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="5 4 15 12 5 20 5 4" />
+    <line x1="19" y1="5" x2="19" y2="19" />
   </svg>
 );
 
@@ -244,6 +261,29 @@ function formatElapsed(totalSeconds: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function formatDurationPreset(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder === 0 ? `${minutes}m` : `${minutes}m${remainder}s`;
+}
+
+function indexForElapsedMs(points: RecordPoint[], firstTsMs: number, elapsedMs: number): number {
+  if (!points.length) return 0;
+  const targetTs = firstTsMs + Math.max(0, elapsedMs);
+  let lo = 0;
+  let hi = points.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (points[mid].timestamp_ms <= targetTs) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
+}
+
 function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi"): string {
   const asFiniteNumber = (value: unknown): number | null => {
     if (value === null || value === undefined || value === "") return null;
@@ -401,7 +441,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(0);
+  const [activeDurationPreset, setActiveDurationPreset] = useState<number | null>(DEFAULT_DURATION_PRESET);
   const pathColorModeRef = useRef(pathColorMode);
   const terrainEnabledRef = useRef(terrainEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
@@ -425,7 +465,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const coordinatesRef = useRef(coordinates);
   const distanceUnitRef = useRef(distanceUnit);
   const maxTimelineIndex = Math.max(0, coordinates.length - 1);
-  const playbackSpeed = PLAYBACK_SPEEDS[playbackSpeedIndex];
 
   const firstTimestampMs = useMemo(
     () => gpsRecords.find((r) => Number.isFinite(r.timestamp_ms))?.timestamp_ms ?? 0,
@@ -439,6 +478,14 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     return Math.max(0, Math.round((lastTsMs - firstTimestampMs) / 1000));
   }, [gpsRecords, firstTimestampMs]);
   const totalElapsedMs = Math.max(0, totalElapsedSeconds * 1000);
+
+  const playbackSpeed = useMemo(() => {
+    if (activeDurationPreset === null || totalElapsedSeconds <= 0) return DEFAULT_PLAYBACK_SPEED;
+    // Keep this fractional so the replay finishes in exactly the selected
+    // duration. Rounding to an integer multiplier introduces large errors,
+    // especially for short activities.
+    return Math.max(0.1, totalElapsedSeconds / activeDurationPreset);
+  }, [activeDurationPreset, totalElapsedSeconds]);
 
   const currentPoint = gpsRecords[Math.min(Math.max(timelineIndex, 0), Math.max(0, gpsRecords.length - 1))];
   const currentElapsedSeconds = currentPoint && Number.isFinite(currentPoint.timestamp_ms)
@@ -476,11 +523,15 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   useEffect(() => {
     timelineIndexRef.current = timelineIndex;
     playheadFloatRef.current = timelineIndex;
+    // While playing, the animation loop owns playheadElapsedMsRef. Snapping it
+    // to the nearest point's timestamp here would discard sub-point progress on
+    // every frame and make playback run slower than the selected duration.
+    if (isPlaying) return;
     const point = gpsRecords[Math.min(Math.max(timelineIndex, 0), Math.max(0, gpsRecords.length - 1))];
     if (point && Number.isFinite(point.timestamp_ms)) {
       playheadElapsedMsRef.current = Math.max(0, point.timestamp_ms - firstTimestampMs);
     }
-  }, [timelineIndex, gpsRecords, firstTimestampMs]);
+  }, [timelineIndex, gpsRecords, firstTimestampMs, isPlaying]);
 
   useEffect(() => {
     const endIndex = Math.max(0, coordinates.length - 1);
@@ -506,24 +557,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       return;
     }
 
-    const getIndexForElapsedMs = (elapsedMs: number): number => {
-      const points = gpsRecordsRef.current;
-      if (!points.length) return 0;
-      const targetTs = firstTimestampMs + Math.max(0, elapsedMs);
-      let lo = 0;
-      let hi = points.length - 1;
-
-      while (lo < hi) {
-        const mid = Math.ceil((lo + hi) / 2);
-        if (points[mid].timestamp_ms <= targetTs) {
-          lo = mid;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      return lo;
-    };
-
     const tick = (time: number) => {
       if (lastFrameTimeRef.current === null) {
         lastFrameTimeRef.current = time;
@@ -532,7 +565,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       lastFrameTimeRef.current = time;
 
       const maxIndex = Math.max(0, coordinatesRef.current.length - 1);
-      const nextElapsedMs = playheadElapsedMsRef.current + (deltaSeconds * 1000 * PLAYBACK_SPEEDS[playbackSpeedIndex]);
+      const nextElapsedMs = playheadElapsedMsRef.current + (deltaSeconds * 1000 * playbackSpeed);
 
       if (nextElapsedMs >= totalElapsedMs) {
         playheadElapsedMsRef.current = totalElapsedMs;
@@ -544,7 +577,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       }
 
       playheadElapsedMsRef.current = Math.max(0, nextElapsedMs);
-      const rounded = getIndexForElapsedMs(playheadElapsedMsRef.current);
+      const rounded = indexForElapsedMs(gpsRecordsRef.current, firstTimestampMs, playheadElapsedMsRef.current);
       playheadFloatRef.current = rounded;
       if (rounded !== timelineIndexRef.current) {
         timelineIndexRef.current = rounded;
@@ -563,7 +596,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       }
       lastFrameTimeRef.current = null;
     };
-  }, [isPlaying, playbackSpeedIndex, coordinates.length, firstTimestampMs, totalElapsedMs]);
+  }, [isPlaying, playbackSpeed, coordinates.length, firstTimestampMs, totalElapsedMs]);
 
   /* ── Draw route ─────────────────────────────────────────────── */
 
@@ -793,6 +826,95 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     setIsPlaying(true);
   }
 
+  function seekToIndex(index: number) {
+    const clamped = Math.max(0, Math.min(maxTimelineIndex, index));
+    setIsPlaying(false);
+    timelineIndexRef.current = clamped;
+    playheadFloatRef.current = clamped;
+    const point = gpsRecordsRef.current[clamped];
+    if (point && Number.isFinite(point.timestamp_ms)) {
+      playheadElapsedMsRef.current = Math.max(0, point.timestamp_ms - firstTimestampMs);
+    }
+    setTimelineIndex(clamped);
+  }
+
+  function stepBy(seconds: number) {
+    const nextElapsedMs = Math.max(0, playheadElapsedMsRef.current + seconds * 1000);
+    seekToIndex(indexForElapsedMs(gpsRecordsRef.current, firstTimestampMs, nextElapsedMs));
+  }
+
+  function changeDurationBy(delta: number) {
+    const presets = DURATION_PRESETS as readonly number[];
+    const currentIndex = activeDurationPreset === null
+      ? presets.indexOf(DEFAULT_DURATION_PRESET)
+      : presets.indexOf(activeDurationPreset);
+    const base = currentIndex === -1 ? presets.indexOf(DEFAULT_DURATION_PRESET) : currentIndex;
+    const next = Math.max(0, Math.min(presets.length - 1, base + delta));
+    setActiveDurationPreset(presets[next]);
+  }
+
+  function applyDurationPreset(seconds: number) {
+    if (totalElapsedSeconds <= 0) return;
+    setActiveDurationPreset(seconds);
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "BUTTON" ||
+          target.tagName === "A" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (coordinates.length < 2) return;
+
+      switch (event.key) {
+        case " ":
+        case "Spacebar":
+          event.preventDefault();
+          togglePlayback();
+          break;
+        case "ArrowRight":
+          event.preventDefault();
+          stepBy(STEP_SECONDS);
+          break;
+        case "ArrowLeft":
+          event.preventDefault();
+          stepBy(-STEP_SECONDS);
+          break;
+        case "ArrowUp":
+        case "+":
+        case "=":
+          event.preventDefault();
+          changeDurationBy(-1);
+          break;
+        case "ArrowDown":
+        case "-":
+        case "_":
+          event.preventDefault();
+          changeDurationBy(1);
+          break;
+        case "Home":
+          event.preventDefault();
+          seekToIndex(0);
+          break;
+        case "End":
+          event.preventDefault();
+          seekToIndex(maxTimelineIndex);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [coordinates.length, maxTimelineIndex, activeDurationPreset, isPlaying, firstTimestampMs, totalElapsedSeconds]);
+
   /* ── Map lifecycle ──────────────────────────────────────────── */
 
   useEffect(() => {
@@ -983,9 +1105,38 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       </div>
 
       <div className="map-playback-bar">
-        <button className="btn-outline-secondary map-playback-btn" onClick={togglePlayback} disabled={coordinates.length < 2} style={{ padding: "0.32rem 0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label={isPlaying ? "Pause" : "Play"}>
-          {isPlaying ? <IconPause /> : <IconPlay />}
-        </button>
+        <div className="map-playback-transport">
+          <button
+            className="btn-outline-secondary map-playback-btn"
+            type="button"
+            onClick={() => seekToIndex(0)}
+            disabled={coordinates.length < 2}
+            aria-label={t("activityMap.jumpToStart")}
+            title={t("activityMap.jumpToStart")}
+          >
+            <IconSkipStart />
+          </button>
+          <button
+            className="btn-outline-secondary map-playback-btn map-playback-btn-primary"
+            type="button"
+            onClick={togglePlayback}
+            disabled={coordinates.length < 2}
+            aria-label={isPlaying ? t("activityMap.pause") : t("activityMap.play")}
+            title={isPlaying ? t("activityMap.pause") : t("activityMap.play")}
+          >
+            {isPlaying ? <IconPause /> : <IconPlay />}
+          </button>
+          <button
+            className="btn-outline-secondary map-playback-btn"
+            type="button"
+            onClick={() => seekToIndex(maxTimelineIndex)}
+            disabled={coordinates.length < 2}
+            aria-label={t("activityMap.jumpToEnd")}
+            title={t("activityMap.jumpToEnd")}
+          >
+            <IconSkipEnd />
+          </button>
+        </div>
         <input
           className="map-playback-range"
           type="range"
@@ -1000,20 +1151,33 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
             setTimelineIndex(next);
           }}
           style={{
-            "--progress": coordinates.length > 1 
-                ? `${(Math.min(timelineIndex, Math.max(0, coordinates.length - 1)) / Math.max(1, coordinates.length - 1)) * 100}%` 
+            "--progress": coordinates.length > 1
+                ? `${(Math.min(timelineIndex, Math.max(0, coordinates.length - 1)) / Math.max(1, coordinates.length - 1)) * 100}%`
                 : "0%"
           } as React.CSSProperties}
         />
-        <button
-          className="btn-outline-secondary map-playback-speed"
-          type="button"
-          onClick={() => setPlaybackSpeedIndex((i) => (i + 1) % PLAYBACK_SPEEDS.length)}
-          disabled={coordinates.length < 2}
-        >
-          {t("activityMap.speed")} {playbackSpeed}x
-        </button>
         <span className="map-playback-time">{formatElapsed(currentElapsedSeconds)} / {formatElapsed(totalElapsedSeconds)}</span>
+      </div>
+
+      <div className="map-playback-options">
+        <div className="map-speed-group" role="group" aria-label={t("activityMap.replayIn")}>
+          <span className="map-speed-label">{t("activityMap.replayIn")}</span>
+          {DURATION_PRESETS.map((seconds) => (
+            <button
+              key={seconds}
+              type="button"
+              className={`map-speed-chip ${activeDurationPreset === seconds ? "active" : ""}`}
+              onClick={() => applyDurationPreset(seconds)}
+              disabled={coordinates.length < 2 || totalElapsedSeconds <= 0}
+            >
+              {formatDurationPreset(seconds)}
+            </button>
+          ))}
+        </div>
+        <span className="map-playback-speed-readout" title={t("activityMap.effectiveSpeed")}>
+          ×{playbackSpeed >= 10 ? Math.round(playbackSpeed) : playbackSpeed.toFixed(1)}
+        </span>
+        <span className="map-playback-hint">{t("activityMap.playbackHint")}</span>
       </div>
 
       {pathColorMode !== "solid" && coordinates.length > 0 && (

@@ -333,5 +333,12 @@
   "activityMap.temp": "Temp",
   "activityMap.low": "Low",
   "activityMap.high": "High",
-  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity."
+  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity.",
+  "activityMap.play": "Play",
+  "activityMap.pause": "Pause",
+  "activityMap.jumpToStart": "Jump to start",
+  "activityMap.jumpToEnd": "Jump to end",
+  "activityMap.replayIn": "Replay in",
+  "activityMap.playbackHint": "Space play/pause · ←/→ skip 5s · ↑/↓ replay length",
+  "activityMap.effectiveSpeed": "Effective playback speed"
 }

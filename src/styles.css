@@ -1767,16 +1767,97 @@ button:focus-visible {
 
 .map-playback-bar {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   gap: 0.55rem;
   align-items: center;
 }
 
-.map-playback-btn,
-.map-playback-speed {
+.map-playback-transport {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.map-playback-btn {
   font-size: 0.74rem;
-  padding: 0.32rem 0.6rem;
+  padding: 0.32rem 0.5rem;
   min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-playback-btn-primary {
+  min-width: 40px;
+}
+
+.map-playback-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.55rem;
+}
+
+.map-speed-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.map-speed-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-right: 0.15rem;
+}
+
+.map-speed-chip {
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.3rem 0.5rem;
+  min-width: 34px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.map-speed-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.map-speed-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.map-speed-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.map-playback-speed-readout {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  white-space: nowrap;
+}
+
+.map-playback-hint {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  margin-left: auto;
 }
 
 .map-playback-range {
@@ -3477,6 +3558,13 @@ button:focus-visible {
   }
   .map-playback-time {
     justify-self: flex-start;
+  }
+  .map-playback-options {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .map-playback-hint {
+    margin-left: 0;
   }
 }
 
