@@ -11,6 +11,9 @@ type Props = {
   mapStyle: MapStyle;
   setMapStyle: (style: MapStyle) => void;
   lapTimestampsUtc?: string[];
+  /** Reports the current playback position (ms from activity start) so other
+   *  charts can render only the data up to the playhead. */
+  onPlaybackChange?: (elapsedMs: number) => void;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -416,7 +419,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [] }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [], onPlaybackChange }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -450,6 +453,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const lastFrameTimeRef = useRef<number | null>(null);
   const playheadFloatRef = useRef(0);
   const playheadElapsedMsRef = useRef(0);
+  const lastPlaybackReportAtRef = useRef(0);
+  const playbackReportEnabledRef = useRef(false);
 
   const gpsRecords = useMemo(() => {
     const rows = records.filter((r) => typeof r.latitude === "number" && typeof r.longitude === "number");
@@ -470,6 +475,11 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     () => gpsRecords.find((r) => Number.isFinite(r.timestamp_ms))?.timestamp_ms ?? 0,
     [gpsRecords]
   );
+
+  // The charts use the first record as their time origin, which may differ
+  // from the first GPS point. Report elapsed time against the same origin so
+  // the playhead lines up exactly with the chart data.
+  const chartBaseTimestampMs = records[0]?.timestamp_ms ?? 0;
 
   const totalElapsedSeconds = useMemo(() => {
     if (!gpsRecords.length) return 0;
@@ -509,6 +519,26 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     };
   }, [currentPoint, currentElapsedSeconds, distanceUnit, gpsRecords.length, timelineIndex]);
 
+  // Publish the playhead position so the line charts can reveal data in sync
+  // with the map. While playing we throttle to ~10 updates/second to avoid
+  // re-rendering the charts on every animation frame; seeks and pauses report
+  // immediately.
+  useEffect(() => {
+    if (!onPlaybackChange || !playbackReportEnabledRef.current) return;
+    // Without a playable route the map cannot drive the charts; leave them
+    // showing the full activity.
+    if (coordinates.length < 2) return;
+    if (isPlaying) {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastPlaybackReportAtRef.current < 100) return;
+      lastPlaybackReportAtRef.current = now;
+    }
+    const elapsedMs = currentPoint && Number.isFinite(currentPoint.timestamp_ms)
+      ? Math.max(0, currentPoint.timestamp_ms - chartBaseTimestampMs)
+      : currentElapsedSeconds * 1000;
+    onPlaybackChange(elapsedMs);
+  }, [currentElapsedSeconds, currentPoint, chartBaseTimestampMs, coordinates.length, isPlaying, onPlaybackChange]);
+
   useEffect(() => { coordinatesRef.current = coordinates; }, [coordinates]);
   useEffect(() => { gpsRecordsRef.current = gpsRecords; }, [gpsRecords]);
   useEffect(() => { distanceUnitRef.current = distanceUnit; }, [distanceUnit]);
@@ -538,6 +568,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     timelineIndexRef.current = endIndex;
     playheadFloatRef.current = endIndex;
     playheadElapsedMsRef.current = totalElapsedMs;
+    playbackReportEnabledRef.current = true;
     setTimelineIndex(endIndex);
     setIsPlaying(false);
   }, [coordinates.length, totalElapsedMs]);
@@ -813,6 +844,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
   function togglePlayback() {
     if (coordinates.length < 2) return;
+    playbackReportEnabledRef.current = true;
     if (isPlaying) {
       setIsPlaying(false);
       return;
@@ -828,6 +860,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
   function seekToIndex(index: number) {
     const clamped = Math.max(0, Math.min(maxTimelineIndex, index));
+    playbackReportEnabledRef.current = true;
     setIsPlaying(false);
     timelineIndexRef.current = clamped;
     playheadFloatRef.current = clamped;
@@ -1147,6 +1180,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
           disabled={coordinates.length < 2}
           onChange={(e) => {
             const next = Number(e.target.value);
+            playbackReportEnabledRef.current = true;
             setIsPlaying(false);
             setTimelineIndex(next);
           }}

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
@@ -21,6 +22,8 @@ type Props = {
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
+  /** When set, only data up to this elapsed time (ms) is drawn. */
+  playbackElapsedMs?: number | null;
   /** "primary" renders the always-visible panels, "more" the collapsible ones. */
   mode?: "primary" | "more";
 };
@@ -66,6 +69,7 @@ export function ActivityInsights({
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
+  playbackElapsedMs = null,
   mode = "primary",
 }: Props) {
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
@@ -85,19 +89,10 @@ export function ActivityInsights({
   const formatTooltipHeader = (relMs: number) =>
     `<div style="display:flex;align-items:center;gap:6px;"><strong>${formatRelTime(relMs)}</strong><span style="display:inline-flex;align-items:center;border-radius:999px;padding:1px 6px;font-size:11px;background:rgba(148,163,184,0.22);">${formatAbsTime(t0, relMs)}</span></div>`;
 
-  if (!records.length) {
-    return (
-      <div className="empty-state" style={{ minHeight: 200 }}>
-        <span className="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg></span>
-        <span>{tr("insights.emptyState")}</span>
-      </div>
-    );
-  }
-
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
   const smoothWindow = smoothGraphs ? getDynamicSmoothingWindow(records.length, totalDurationMs, zoomRange) : 1;
-  const timeline = records.map((r, i) => {
+  const timeline = useMemo(() => records.map((r, i) => {
     const prev = i > 0 ? records[i - 1] : undefined;
     const dt = prev ? (r.timestamp_ms - prev.timestamp_ms) / 1000 : 0;
     const derivedSpeed =
@@ -118,7 +113,103 @@ export function ActivityInsights({
       temperatureC: r.temperature_c ?? null,
       timestampMs: r.timestamp_ms,
     };
-  });
+  }), [records, t0, distanceUnit]);
+
+  // The heatmap is expensive to build, so keep it independent of the playback
+  // position (it is intentionally static while the line charts animate).
+  const { heatBins, heatMetrics, heatSeriesData } = useMemo(() => {
+    const totalRelMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
+    const heatBins = Math.max(1, Math.ceil(totalRelMs / 60000));
+    const heatMetrics = [
+      {
+        label: "HR",
+        unit: "bpm",
+        getter: (d: (typeof timeline)[number]) => d.heartRate,
+        colors: isDark ? ["#2a0b12", "#dc2626", "#fb7185"] : ["#fee2e2", "#f87171", "#dc2626"],
+      },
+      {
+        label: "Speed",
+        unit: speedLabel(distanceUnit),
+        getter: (d: (typeof timeline)[number]) => d.speedInUnit,
+        colors: isDark ? ["#0e2a1e", "#16a34a", "#4ade80"] : ["#dcfce7", "#4ade80", "#15803d"],
+      },
+      {
+        label: "Cadence",
+        unit: "rpm",
+        getter: (d: (typeof timeline)[number]) => d.cadence,
+        colors: isDark ? ["#2f1a05", "#f59e0b", "#facc15"] : ["#fef3c7", "#fbbf24", "#d97706"],
+      },
+      {
+        label: "Temp",
+        unit: "degC",
+        getter: (d: (typeof timeline)[number]) => d.temperatureC,
+        colors: isDark ? ["#0b1a3a", "#1d4ed8", "#38bdf8"] : ["#dbeafe", "#60a5fa", "#1d4ed8"],
+      },
+    ] as const;
+
+    const heatRowBounds = heatMetrics.map(() => ({ min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY }));
+    const rawHeatCells: Array<Array<{ x: number; raw: number | null }>> = heatMetrics.map(() => []);
+
+    for (let x = 0; x < heatBins; x += 1) {
+      const startMs = x * 60000;
+      const endMs = startMs + 60000;
+      const slice = timeline.filter((d) => d.relMs >= startMs && d.relMs < endMs);
+      for (let row = 0; row < heatMetrics.length; row += 1) {
+        const metricValue = safeAvg(slice.map((r) => heatMetrics[row].getter(r)));
+        const raw = typeof metricValue === "number" && Number.isFinite(metricValue) ? Number(metricValue.toFixed(2)) : null;
+        if (raw !== null) {
+          heatRowBounds[row].min = Math.min(heatRowBounds[row].min, raw);
+          heatRowBounds[row].max = Math.max(heatRowBounds[row].max, raw);
+        }
+        rawHeatCells[row].push({ x, raw });
+      }
+    }
+
+    const heatSeriesData: Array<Array<{ value: [number, number, number]; raw: number | null; label: string; unit: string }>> =
+      rawHeatCells.map((rowCells, row) => {
+        const bounds = heatRowBounds[row];
+        const hasBounds = Number.isFinite(bounds.min) && Number.isFinite(bounds.max);
+        return rowCells.map(({ x, raw }) => {
+          let normalized = 0;
+          if (raw !== null && hasBounds) {
+            normalized = bounds.max > bounds.min ? (raw - bounds.min) / (bounds.max - bounds.min) : 0.5;
+          }
+          return {
+            value: [x, 0, Number(normalized.toFixed(4))],
+            raw,
+            label: heatMetrics[row].label,
+            unit: heatMetrics[row].unit,
+          };
+        });
+      });
+
+    return { heatBins, heatMetrics, heatSeriesData };
+  }, [timeline, records, t0, isDark, distanceUnit]);
+
+  if (!records.length) {
+    return (
+      <div className="empty-state" style={{ minHeight: 200 }}>
+        <span className="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg></span>
+        <span>{tr("insights.emptyState")}</span>
+      </div>
+    );
+  }
+
+  // Number of records at or before the map playhead. Smoothing and axis
+  // domains still use the full activity so the chart does not rescale while
+  // the line grows.
+  const visibleCount = (() => {
+    if (playbackElapsedMs == null) return records.length;
+    const cutoff = Math.max(0, playbackElapsedMs);
+    let lo = 0;
+    let hi = records.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (records[mid].timestamp_ms - t0 <= cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  })();
 
   const speedLineData = timeline.map((d) => [d.relMs, d.speedInUnit]);
   const elevationLineData = timeline.map((d) => [d.relMs, d.altitudeInUnit]);
@@ -129,6 +220,11 @@ export function ActivityInsights({
   const elevationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(elevationLineData, 1, smoothWindow) : elevationLineData;
   const cadenceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(cadenceLineData, 1, smoothWindow) : cadenceLineData;
   const powerLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(powerLineData, 1, smoothWindow) : powerLineData;
+
+  const speedLineVisible = visibleCount >= speedLineDataSmoothed.length ? speedLineDataSmoothed : speedLineDataSmoothed.slice(0, visibleCount);
+  const elevationLineVisible = visibleCount >= elevationLineDataSmoothed.length ? elevationLineDataSmoothed : elevationLineDataSmoothed.slice(0, visibleCount);
+  const cadenceLineVisible = visibleCount >= cadenceLineDataSmoothed.length ? cadenceLineDataSmoothed : cadenceLineDataSmoothed.slice(0, visibleCount);
+  const powerLineVisible = visibleCount >= powerLineDataSmoothed.length ? powerLineDataSmoothed : powerLineDataSmoothed.slice(0, visibleCount);
 
   const hasPowerData = records.some((r) => typeof r.power === "number" && r.power > 0);
   const hasHeartRateData = records.some((r) => typeof r.heart_rate === "number" && r.heart_rate > 0);
@@ -179,7 +275,7 @@ export function ActivityInsights({
     xAxis: {
       type: "value",
       min: 0,
-      max: "dataMax",
+      max: totalDurationMs,
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -205,7 +301,7 @@ export function ActivityInsights({
         lineStyle: { width: 2, color: "#38bdf8" },
         areaStyle: { color: isDark ? "rgba(56, 189, 248, 0.1)" : "rgba(56, 189, 248, 0.15)" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: speedLineDataSmoothed,
+        data: speedLineVisible,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -233,7 +329,7 @@ export function ActivityInsights({
     xAxis: {
       type: "value",
       min: 0,
-      max: "dataMax",
+      max: totalDurationMs,
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -258,7 +354,7 @@ export function ActivityInsights({
         name: tr("insights.elevation"), type: "line", smooth: smoothGraphs, showSymbol: false,
         lineStyle: { width: 1.5, color: "#f97316" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: elevationLineDataSmoothed,
+        data: elevationLineVisible,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -319,7 +415,7 @@ export function ActivityInsights({
     xAxis: {
       type: "value",
       min: 0,
-      max: "dataMax",
+      max: totalDurationMs,
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -352,7 +448,7 @@ export function ActivityInsights({
         name: tr("insights.cadence"), type: "line", smooth: smoothGraphs, showSymbol: false,
         lineStyle: { width: 2, color: "#22d3ee" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: cadenceLineDataSmoothed,
+        data: cadenceLineVisible,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -364,7 +460,7 @@ export function ActivityInsights({
       ...(hasPowerData ? [{
         name: tr("insights.power"), type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: powerLineDataSmoothed,
+        data: powerLineVisible,
         lineStyle: { color: "#f97316" },
       }] : []),
     ],
@@ -476,71 +572,6 @@ export function ActivityInsights({
       },
     ],
   };
-
-  const totalRelMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
-  const heatBins = Math.max(1, Math.ceil(totalRelMs / 60000));
-  const heatMetrics = [
-    {
-      label: "HR",
-      unit: "bpm",
-      getter: (d: (typeof timeline)[number]) => d.heartRate,
-      colors: isDark ? ["#2a0b12", "#dc2626", "#fb7185"] : ["#fee2e2", "#f87171", "#dc2626"],
-    },
-    {
-      label: "Speed",
-      unit: speedLabel(distanceUnit),
-      getter: (d: (typeof timeline)[number]) => d.speedInUnit,
-      colors: isDark ? ["#0e2a1e", "#16a34a", "#4ade80"] : ["#dcfce7", "#4ade80", "#15803d"],
-    },
-    {
-      label: "Cadence",
-      unit: "rpm",
-      getter: (d: (typeof timeline)[number]) => d.cadence,
-      colors: isDark ? ["#2f1a05", "#f59e0b", "#facc15"] : ["#fef3c7", "#fbbf24", "#d97706"],
-    },
-    {
-      label: "Temp",
-      unit: "degC",
-      getter: (d: (typeof timeline)[number]) => d.temperatureC,
-      colors: isDark ? ["#0b1a3a", "#1d4ed8", "#38bdf8"] : ["#dbeafe", "#60a5fa", "#1d4ed8"],
-    },
-  ] as const;
-
-  const heatRowBounds = heatMetrics.map(() => ({ min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY }));
-  const rawHeatCells: Array<Array<{ x: number; raw: number | null }>> = heatMetrics.map(() => []);
-
-  for (let x = 0; x < heatBins; x += 1) {
-    const startMs = x * 60000;
-    const endMs = startMs + 60000;
-    const slice = timeline.filter((d) => d.relMs >= startMs && d.relMs < endMs);
-    for (let row = 0; row < heatMetrics.length; row += 1) {
-      const metricValue = safeAvg(slice.map((r) => heatMetrics[row].getter(r)));
-      const raw = typeof metricValue === "number" && Number.isFinite(metricValue) ? Number(metricValue.toFixed(2)) : null;
-      if (raw !== null) {
-        heatRowBounds[row].min = Math.min(heatRowBounds[row].min, raw);
-        heatRowBounds[row].max = Math.max(heatRowBounds[row].max, raw);
-      }
-      rawHeatCells[row].push({ x, raw });
-    }
-  }
-
-  const heatSeriesData: Array<Array<{ value: [number, number, number]; raw: number | null; label: string; unit: string }>> =
-    rawHeatCells.map((rowCells, row) => {
-      const bounds = heatRowBounds[row];
-      const hasBounds = Number.isFinite(bounds.min) && Number.isFinite(bounds.max);
-      return rowCells.map(({ x, raw }) => {
-        let normalized = 0;
-        if (raw !== null && hasBounds) {
-          normalized = bounds.max > bounds.min ? (raw - bounds.min) / (bounds.max - bounds.min) : 0.5;
-        }
-        return {
-          value: [x, 0, Number(normalized.toFixed(4))],
-          raw,
-          label: heatMetrics[row].label,
-          unit: heatMetrics[row].unit,
-        };
-      });
-    });
 
   const rowTop = [16, 64, 112, 160];
   const rowHeight = 34;

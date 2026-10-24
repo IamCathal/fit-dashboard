@@ -17,6 +17,8 @@ type Props = {
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
+  /** When set, only data up to this elapsed time (ms) is drawn. */
+  playbackElapsedMs?: number | null;
 };
 
 /** Slider granularity: one second expressed in minutes. */
@@ -34,6 +36,7 @@ export function ActivityChart({
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
+  playbackElapsedMs = null,
 }: Props) {
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
@@ -138,6 +141,35 @@ export function ActivityChart({
   const paceSeriesSmoothed = useMemo(
     () => (smoothGraphs ? applyRollingAverageSeries(paceSeriesData, 1, smoothWindow) : paceSeriesData),
     [paceSeriesData, smoothGraphs, smoothWindow],
+  );
+
+  // Number of records that fall at or before the map playhead. Smoothing and
+  // axis domains are still computed from the full activity so the chart does
+  // not rescale while the line grows.
+  const visibleCount = useMemo(() => {
+    if (playbackElapsedMs == null) return records.length;
+    const cutoff = Math.max(0, playbackElapsedMs);
+    let lo = 0;
+    let hi = records.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (records[mid].timestamp_ms - t0 <= cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }, [records, t0, playbackElapsedMs]);
+
+  const hrSeriesVisible = useMemo(
+    () => (visibleCount >= hrSeriesSmoothed.length ? hrSeriesSmoothed : hrSeriesSmoothed.slice(0, visibleCount)),
+    [hrSeriesSmoothed, visibleCount],
+  );
+  const paceSeriesVisible = useMemo(
+    () => (visibleCount >= paceSeriesSmoothed.length ? paceSeriesSmoothed : paceSeriesSmoothed.slice(0, visibleCount)),
+    [paceSeriesSmoothed, visibleCount],
+  );
+  const avgPaceSeriesVisible = useMemo(
+    () => (visibleCount >= avgPaceSeriesData.length ? avgPaceSeriesData : avgPaceSeriesData.slice(0, visibleCount)),
+    [avgPaceSeriesData, visibleCount],
   );
 
   // Median pace is used as the centre of the default visible window because it
@@ -283,7 +315,7 @@ export function ActivityChart({
     xAxis: {
       type: "value",
       min: 0,
-      max: "dataMax",
+      max: totalDurationMs,
       axisLabel: {
         color: axisColor,
         fontSize: 11,
@@ -318,7 +350,7 @@ export function ActivityChart({
         lineStyle: { width: 2 },
         areaStyle: { opacity: 0.12 },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: hrSeriesSmoothed,
+        data: hrSeriesVisible,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -364,7 +396,7 @@ export function ActivityChart({
     xAxis: {
       type: "value",
       min: 0,
-      max: "dataMax",
+      max: totalDurationMs,
       axisLabel: {
         color: axisColor,
         fontSize: 11,
@@ -400,7 +432,7 @@ export function ActivityChart({
         lineStyle: { width: 2, color: "#f43f5e" },
         areaStyle: { color: isDark ? "rgba(244, 63, 94, 0.1)" : "rgba(244, 63, 94, 0.12)" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: paceSeriesSmoothed,
+        data: paceSeriesVisible,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -417,7 +449,7 @@ export function ActivityChart({
         lineStyle: { width: 2, type: "dashed", color: "#3b82f6" },
         itemStyle: { color: "#3b82f6" },
         sampling: "lttb",
-        data: avgPaceSeriesData,
+        data: avgPaceSeriesVisible,
       }] : []),
     ],
   };

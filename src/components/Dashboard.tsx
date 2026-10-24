@@ -319,6 +319,7 @@ export function Dashboard({ onLogout }: Props) {
     x: number; y: number; activityId: number; activityName: string;
   } | null>(null);
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
+  const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [showAllStats, setShowAllStats] = useState(false);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
@@ -345,6 +346,12 @@ export function Dashboard({ onLogout }: Props) {
   useEffect(() => {
     setShowMoreInsights(!isRunSport(selectedActivity?.sport));
   }, [selectedActivity?.id, selectedActivity?.sport]);
+
+  // Reset the shared playhead when a different activity is selected. The map
+  // reports its position again once the new records are loaded.
+  useEffect(() => {
+    setPlaybackElapsedMs(null);
+  }, [selectedActivity?.id]);
 
   useEffect(() => {
     const close = () => { setContextMenu(null); setBulkExportDropdownOpen(false); setIsSortOpen(false); };
@@ -1638,11 +1645,11 @@ export function Dashboard({ onLogout }: Props) {
                 )}
               </div>
               <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
+                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} /></div>
+                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
               </div>
               <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} />
-              <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>
@@ -1738,7 +1745,7 @@ export function Dashboard({ onLogout }: Props) {
                 </button>
               </div>
               {showMoreInsights && (
-                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
               )}
             </>
           ) : (
