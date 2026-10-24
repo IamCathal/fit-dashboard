@@ -290,6 +290,8 @@
   "map.density": "Density",
   "map.loadingRoutes": "Loading routes...",
   "map.routesLoaded": "{count} routes",
+  "map.fullscreen": "Fullscreen",
+  "map.exitFullscreen": "Exit fullscreen",
   "map.resetZoom": "Reset zoom",
 
   "donut.activityTypes": "Activity Types",

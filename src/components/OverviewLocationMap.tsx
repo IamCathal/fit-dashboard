@@ -122,6 +122,7 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   const [viewMode, setViewMode] = useState<ViewMode>("routes");
   const [routes, setRoutes] = useState<RouteLine[]>([]);
   const [routesLoading, setRoutesLoading] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const routeCacheRef = useRef<Map<number, RouteLine>>(new Map());
   const activitiesRef = useRef(activities);
   activitiesRef.current = activities;
@@ -515,8 +516,31 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
     if (viewMode === "routes" && routes.length > 0) fitRef.current();
   }, [viewMode]);
 
+  // Keep the map canvas in sync when the panel enters/leaves fullscreen, lock
+  // background scrolling, and allow Escape to exit.
+  useEffect(() => {
+    const map = mapRef.current;
+    document.body.classList.toggle("map-fullscreen-open", isFullscreen);
+    const frame = requestAnimationFrame(() => map?.resize());
+    // A second pass after the layout settles avoids a half-sized canvas on
+    // some browsers when toggling fixed positioning.
+    const timer = window.setTimeout(() => map?.resize(), 200);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFullscreen(false);
+    };
+    if (isFullscreen) window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.classList.remove("map-fullscreen-open");
+    };
+  }, [isFullscreen]);
+
   return (
-    <div className="panel overview-location-panel">
+    <div className={`panel overview-location-panel${isFullscreen ? " map-fullscreen" : ""}`}>
       <div className="map-header" style={{ marginBottom: "0.6rem" }}>
         <div>
           <h3 style={{ marginBottom: "0.32rem" }}>{t("map.exploredLocations")}</h3>
@@ -549,6 +573,29 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            className="icon-btn map-fullscreen-btn"
+            onClick={() => setIsFullscreen((value) => !value)}
+            title={isFullscreen ? t("map.exitFullscreen") : t("map.fullscreen")}
+            aria-label={isFullscreen ? t("map.exitFullscreen") : t("map.fullscreen")}
+          >
+            {isFullscreen ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
 

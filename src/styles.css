@@ -2885,6 +2885,35 @@ button:focus-visible {
   flex-shrink: 0;
 }
 
+.overview-location-panel.map-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 1rem;
+  border-radius: 0;
+}
+
+.overview-location-panel.map-fullscreen .overview-map-canvas {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+body.map-fullscreen-open {
+  overflow: hidden;
+}
+
+.map-fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 31px;
+  padding: 0.32rem 0.55rem;
+}
+
 .overview-location-panel .overview-map-canvas {
   flex: 1;
   min-height: 0;
