@@ -85,6 +85,52 @@ export function ActivityChart({
     [records, t0, distanceUnit],
   );
 
+  // Running average pace: cumulative moving time divided by cumulative
+  // distance. Stopped segments (speed below a small threshold) are excluded so
+  // pauses don't drag the average down.
+  const avgPaceSeriesData = useMemo(() => {
+    const firstDistance = records.find((r) => typeof r.distance_m === "number")?.distance_m ?? 0;
+    let movingTimeS = 0;
+    let cumulativeDistanceM = 0;
+    let prev: RecordPoint | undefined;
+
+    return records.map((r) => {
+      const relMs = r.timestamp_ms - t0;
+      if (prev) {
+        const dtS = (r.timestamp_ms - prev.timestamp_ms) / 1000;
+        if (dtS > 0) {
+          let speedMs: number | undefined;
+          if (typeof r.distance_m === "number" && typeof prev.distance_m === "number") {
+            speedMs = (r.distance_m - prev.distance_m) / dtS;
+          } else {
+            speedMs = r.speed_m_s ?? prev.speed_m_s;
+          }
+          if (typeof speedMs === "number" && speedMs > 0.2) {
+            movingTimeS += dtS;
+          }
+        }
+      }
+      if (typeof r.distance_m === "number") {
+        cumulativeDistanceM = Math.max(0, r.distance_m - firstDistance);
+      }
+      prev = r;
+
+      const paceMinPerKm = cumulativeDistanceM > 0 && movingTimeS > 0
+        ? (movingTimeS / 60) / (cumulativeDistanceM / 1000)
+        : null;
+      const paceMinPerUnit = paceMinPerKm == null ? null : convertPaceMinPerKm(paceMinPerKm, distanceUnit);
+      return [relMs, paceMinPerUnit, r.timestamp_ms] as [number, number | null, number];
+    });
+  }, [records, t0, distanceUnit]);
+
+  const overallAvgPace = useMemo(() => {
+    for (let i = avgPaceSeriesData.length - 1; i >= 0; i -= 1) {
+      const value = avgPaceSeriesData[i][1];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    }
+    return null;
+  }, [avgPaceSeriesData]);
+
   const hrSeriesSmoothed = useMemo(
     () => (smoothGraphs ? applyRollingAverageSeries(hrSeriesData, 1, smoothWindow) : hrSeriesData),
     [hrSeriesData, smoothGraphs, smoothWindow],
@@ -114,6 +160,8 @@ export function ActivityChart({
   // null means "use the default window centred on the median pace".
   const [paceWindow, setPaceWindow] = useState<{ fast: number; slow: number } | null>(null);
   const [showPaceRange, setShowPaceRange] = useState(false);
+  const [showCurrentPace, setShowCurrentPace] = useState(true);
+  const [showAvgPace, setShowAvgPace] = useState(true);
 
   useEffect(() => {
     setPaceWindow(null);
@@ -135,8 +183,13 @@ export function ActivityChart({
     }
 
     const clampToData = (value: number) => Math.max(dataMin, Math.min(dataMax, value));
-    const defaultFast = clampToData(paceStats.median - DEFAULT_PACE_HALF_WINDOW_MIN);
-    const defaultSlow = clampToData(paceStats.median + DEFAULT_PACE_HALF_WINDOW_MIN);
+    // Keep the running average line inside the default visible window.
+    const defaultFast = clampToData(
+      Math.min(paceStats.median - DEFAULT_PACE_HALF_WINDOW_MIN, overallAvgPace ?? Infinity),
+    );
+    const defaultSlow = clampToData(
+      Math.max(paceStats.median + DEFAULT_PACE_HALF_WINDOW_MIN, overallAvgPace ?? -Infinity),
+    );
 
     let fast = clampToData(paceWindow ? paceWindow.fast : defaultFast);
     let slow = clampToData(paceWindow ? paceWindow.slow : defaultSlow);
@@ -157,7 +210,7 @@ export function ActivityChart({
       isFullRange:
         fast <= dataMin + PACE_RANGE_STEP / 2 && slow >= dataMax - PACE_RANGE_STEP / 2,
     };
-  }, [paceStats, paceWindow]);
+  }, [paceStats, paceWindow, overallAvgPace]);
 
   const formatPaceMinutes = (value: number) => {
     const totalSeconds = Math.round(Math.max(0, value) * 60);
@@ -297,7 +350,11 @@ export function ActivityChart({
       }
     },
     legend: {
-      data: [t("chart.pace")],
+      data: [
+        ...(showCurrentPace ? [t("chart.pace")] : []),
+        ...(showAvgPace ? [t("chart.avgPace")] : []),
+      ],
+      selectedMode: false,
       textStyle: { color: axisColor, fontSize: 12 },
       top: 0,
     },
@@ -331,7 +388,7 @@ export function ActivityChart({
       },
     ],
     series: [
-      {
+      ...(showCurrentPace ? [{
         name: t("chart.pace"),
         type: "line",
         smooth: smoothGraphs,
@@ -347,7 +404,17 @@ export function ActivityChart({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
-      },
+      }] : []),
+      ...(showAvgPace ? [{
+        name: t("chart.avgPace"),
+        type: "line",
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { width: 2, type: "dashed", color: "#3b82f6" },
+        itemStyle: { color: "#3b82f6" },
+        sampling: "lttb",
+        data: avgPaceSeriesData,
+      }] : []),
     ],
   };
 
@@ -365,6 +432,25 @@ export function ActivityChart({
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0, width: "100%", overflow: "hidden" }}>
       <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <div className="chart-series-toggles">
+        <span className="chart-series-toggles-label">{t("chart.paceSeries")}</span>
+        <button
+          type="button"
+          className={`chart-series-toggle ${showCurrentPace ? "active" : ""}`}
+          aria-pressed={showCurrentPace}
+          onClick={() => setShowCurrentPace((value) => (value && !showAvgPace ? value : !value))}
+        >
+          {t("chart.currentPace")}
+        </button>
+        <button
+          type="button"
+          className={`chart-series-toggle ${showAvgPace ? "active" : ""}`}
+          aria-pressed={showAvgPace}
+          onClick={() => setShowAvgPace((value) => (value && !showCurrentPace ? value : !value))}
+        >
+          {t("chart.avgPace")}
+        </button>
+      </div>
       <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
       {paceDomain && (
         <div className="pace-range-control">

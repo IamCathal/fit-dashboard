@@ -2,6 +2,7 @@ import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "rea
 import { flushSync } from "react-dom";
 import { useActivityStore } from "../stores/activityStore";
 import { ActivityChart } from "./ActivityChart";
+import { ActivitySplits } from "./ActivitySplits";
 import { ActivityMap } from "./ActivityMap";
 import { CompareCharts } from "./CompareCharts";
 import { ActivityInsights } from "./ActivityInsights";
@@ -1634,6 +1635,7 @@ export function Dashboard({ onLogout }: Props) {
                 <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
+              <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} />
               <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">

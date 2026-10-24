@@ -1557,6 +1557,141 @@ button:focus-visible {
   box-shadow: 0 -4px 10px rgba(0,0,0,0.06);
 }
 
+/* ── Splits (Strava-style bar chart) ───────────────────────────────── */
+
+.splits-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  /* The main content is a flex column. Because .panel sets overflow: hidden,
+     its automatic min-height becomes 0 and it would otherwise collapse to
+     just the header. Keep the splits panel at its natural content height. */
+  flex-shrink: 0;
+}
+
+.splits-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.splits-header h3 {
+  margin: 0;
+}
+
+.splits-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.splits-control-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.splits-size-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--input-bg);
+}
+
+.splits-size-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  padding: 0.28rem 0.6rem;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.splits-size-toggle button:hover {
+  color: var(--text);
+  background: var(--accent-glow);
+}
+
+.splits-size-toggle button.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-weight: 600;
+}
+
+.splits-table-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.splits-table-toggle:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+}
+
+.splits-table-wrap {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.splits-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.splits-table th,
+.splits-table td {
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+  background: var(--panel);
+}
+
+.splits-table th:first-child,
+.splits-table td:first-child {
+  text-align: left;
+}
+
+.splits-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.splits-table tbody tr:hover td {
+  background: var(--accent-glow);
+}
+
+.splits-table tbody tr.fastest td {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .overview-activity-table-panel {
   min-height: 380px;
   display: flex;
@@ -2600,6 +2735,48 @@ button:focus-visible {
   color: var(--accent);
   border-color: var(--border-accent);
   background: var(--accent-glow);
+}
+
+/* ── Chart Series Toggles ──────────────────────────────────────────── */
+
+.chart-series-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: -0.25rem;
+}
+
+.chart-series-toggles-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-right: 0.15rem;
+}
+
+.chart-series-toggle {
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.chart-series-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+}
+
+.chart-series-toggle.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
 }
 
 /* ── Pace Range Slider ─────────────────────────────────────────────── */
