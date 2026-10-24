@@ -5,13 +5,13 @@ import { useTranslation } from "../lib/i18n";
 
 type Props = {
   activities: Activity[];
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "paper" | "paper-dark";
 };
 
 const COLORS = ["#06b6d4", "#22c55e", "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#3b82f6", "#14b8a6"];
 
 export function OverviewSportTypeDonut({ activities, theme }: Props) {
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "paper-dark";
   const { t } = useTranslation();
   const axisColor = isDark ? "#a1a1aa" : "#475569";
   const tooltipBg = isDark ? "rgba(14, 22, 45, 0.95)" : "rgba(255, 255, 255, 0.95)";

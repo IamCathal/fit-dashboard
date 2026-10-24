@@ -302,9 +302,11 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
             ))}
           </select></label>
 
-          <label><span>{t("settings.theme")}</span><select value={theme} onChange={(e) => setTheme(e.target.value as "light" | "dark")}>
+          <label><span>{t("settings.theme")}</span><select value={theme} onChange={(e) => setTheme(e.target.value as "light" | "dark" | "paper" | "paper-dark")}>
             <option value="light">{t("settings.themeLight")}</option>
             <option value="dark">{t("settings.themeDark")}</option>
+            <option value="paper">{t("settings.themePaper")}</option>
+            <option value="paper-dark">{t("settings.themePaperDark")}</option>
           </select></label>
 
           <label><span>{t("settings.distanceUnit")}</span><select value={distanceUnit} onChange={(e) => setDistanceUnit(e.target.value as "km" | "mi")}>

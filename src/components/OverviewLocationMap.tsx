@@ -41,8 +41,9 @@ const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", B
   },
 };
 
-function styleFromMap(ms: MapStyle, theme: "light" | "dark"): StyleSpecification | string {
-  const actualStyle = ms === "default" ? theme : ms;
+function styleFromMap(ms: MapStyle, theme: "light" | "dark" | "paper" | "paper-dark"): StyleSpecification | string {
+  const baseTheme = theme === "dark" || theme === "paper-dark" ? "dark" : "light";
+  const actualStyle = ms === "default" ? baseTheme : ms;
   if (actualStyle === "light") {
     return "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
   }

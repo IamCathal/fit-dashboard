@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { api } from "../lib/api";
 import { DEFAULT_HR_ZONE_BOUNDS } from "../lib/hrZones";
 
-type Theme = "light" | "dark";
+type Theme = "light" | "dark" | "paper" | "paper-dark";
 type DistanceUnit = "km" | "mi";
 type TimeFormat = "12h" | "24h";
 export type MapStyle = "default" | "light" | "dark" | "openstreet" | "topo" | "satellite";
@@ -37,7 +37,7 @@ type SettingsState = {
 const STORAGE_KEY = "fitDashboard.settings";
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  theme: "light",
+  theme: "paper-dark",
   language: "en",
   distanceUnit: "km",
   timeFormat: "24h",
@@ -54,7 +54,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const parsed = JSON.parse(raw);
       set({
-        theme: parsed.theme ?? "light",
+        theme: parsed.theme ?? "paper-dark",
         language: parsed.language ?? "en",
         distanceUnit: parsed.distanceUnit ?? "km",
         timeFormat: parsed.timeFormat ?? "24h",

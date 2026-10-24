@@ -6,7 +6,7 @@ import { useTranslation } from "../lib/i18n";
 type Props = {
   activities: Activity[];
   distanceUnit: "km" | "mi";
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "paper" | "paper-dark";
 };
 
 type WeekBucket = {
@@ -25,7 +25,7 @@ function weekStart(date: Date): Date {
 }
 
 export function OverviewWeeklyTrend({ activities, distanceUnit, theme }: Props) {
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "paper-dark";
   const { t } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";

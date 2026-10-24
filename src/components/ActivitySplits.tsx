@@ -15,7 +15,7 @@ import { useTranslation } from "../lib/i18n";
 
 type Props = {
   records: RecordPoint[];
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "paper" | "paper-dark";
   distanceUnit: DistanceUnit;
   sport?: string;
 };
@@ -246,7 +246,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport }: Props) {
     return null;
   }
 
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "paper-dark";
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const accentColor = isDark ? "#22d3ee" : "#0891b2";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";

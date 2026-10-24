@@ -219,6 +219,9 @@ function IconSun() {
 function IconMoon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>;
 }
+function IconPaper() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>;
+}
 function IconSettings() {
   return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>;
 }
@@ -1178,8 +1181,32 @@ export function Dashboard({ onLogout }: Props) {
           </div>
         </div>
         <div className="header-right">
-          <button className="icon-btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label="Toggle theme" title={theme === "light" ? t("header.darkMode") : t("header.lightMode")}>
-            {theme === "light" ? <IconMoon /> : <IconSun />}
+          <button
+            className="icon-btn"
+            onClick={() => {
+              if (theme === "paper" || theme === "paper-dark") {
+                setTheme(theme === "paper-dark" ? "paper" : "paper-dark");
+              } else {
+                setTheme(theme === "dark" ? "light" : "dark");
+              }
+            }}
+            aria-label="Toggle light or dark mode"
+            title={theme === "dark" || theme === "paper-dark" ? t("header.lightMode") : t("header.darkMode")}
+          >
+            {theme === "dark" || theme === "paper-dark" ? <IconSun /> : <IconMoon />}
+          </button>
+          <button
+            className={`icon-btn ${theme === "paper" || theme === "paper-dark" ? "active" : ""}`}
+            onClick={() => {
+              const isPaper = theme === "paper" || theme === "paper-dark";
+              const isDark = theme === "dark" || theme === "paper-dark";
+              setTheme(isPaper ? (isDark ? "dark" : "light") : (isDark ? "paper-dark" : "paper"));
+            }}
+            aria-label="Toggle paper theme"
+            aria-pressed={theme === "paper" || theme === "paper-dark"}
+            title={theme === "paper" || theme === "paper-dark" ? t("header.standardMode") : t("header.paperMode")}
+          >
+            <IconPaper />
           </button>
           <button className="icon-btn" onClick={toggleSettings} aria-label={t("header.settings")} title={t("header.settings")}><IconSettings /></button>
           <button className="icon-btn" onClick={() => void onLogout()} aria-label={t("header.logout")} title={t("header.logout")}><IconLogout /></button>

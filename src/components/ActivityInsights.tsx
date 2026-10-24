@@ -15,7 +15,7 @@ import { useTranslation } from "../lib/i18n";
 
 type Props = {
   records: RecordPoint[];
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "paper" | "paper-dark";
   distanceUnit: DistanceUnit;
   heartRateZoneBoundsBpm?: number[];
   zoomRange?: { start: number; end: number } | null;
@@ -73,7 +73,7 @@ export function ActivityInsights({
   mode = "primary",
 }: Props) {
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "paper-dark";
   const { t: tr } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";

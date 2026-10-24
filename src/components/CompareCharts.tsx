@@ -9,7 +9,7 @@ import { useTranslation } from "../lib/i18n";
 type Props = {
   compareIds: number[];
   activities: Activity[];
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "paper" | "paper-dark";
   distanceUnit: DistanceUnit;
 };
 
@@ -86,7 +86,7 @@ export function CompareCharts({ compareIds, activities, theme, distanceUnit }: P
     return <div className="small" style={{ padding: "2rem 0", textAlign: "center" }}>{t("compare.loading")}</div>;
   }
 
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "paper-dark";
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";
   const tooltipBg = isDark ? "rgba(14, 22, 45, 0.95)" : "rgba(255, 255, 255, 0.95)";
