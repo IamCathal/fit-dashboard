@@ -18,6 +18,12 @@ type Props = {
   theme: "light" | "dark" | "paper" | "paper-dark";
   distanceUnit: DistanceUnit;
   sport?: string;
+  /**
+   * Watch-reported average pace in seconds per distance unit, based on moving
+   * (timer) time rather than elapsed time. When present this is used for the
+   * "average" mark line so it matches the activity header and laps summary.
+   */
+  overallAvgPaceSecPerUnit?: number | null;
 };
 
 type Split = {
@@ -50,7 +56,9 @@ function isCyclingSport(sport?: string): boolean {
 
 function formatPace(minPerUnit: number | null): string {
   if (minPerUnit == null || !Number.isFinite(minPerUnit) || minPerUnit <= 0) return "-";
-  const totalSeconds = Math.round(minPerUnit * 60);
+  // Truncate rather than round so the average mark line renders the exact same
+  // value as the header and laps summary (which also truncate seconds).
+  const totalSeconds = Math.floor(minPerUnit * 60);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
@@ -196,7 +204,7 @@ function paceColor(speed: number, minSpeed: number, maxSpeed: number): string {
   return mixColor(MID_COLOR, FAST_COLOR, (t - 0.5) * 2);
 }
 
-export function ActivitySplits({ records, theme, distanceUnit, sport }: Props) {
+export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvgPaceSecPerUnit }: Props) {
   const { t } = useTranslation();
   const unitMeters = distanceUnit === "mi" ? METERS_PER_MILE : METERS_PER_KILOMETER;
   const defaultSplitSize = isCyclingSport(sport) ? 5 : 1;
@@ -232,7 +240,13 @@ export function ActivitySplits({ records, theme, distanceUnit, sport }: Props) {
 
   const totalDistanceM = splits.reduce((sum, split) => sum + split.distanceM, 0);
   const totalDurationS = splits.reduce((sum, split) => sum + split.durationS, 0);
-  const avgSpeed = totalDurationS > 0 ? (totalDistanceM / unitMeters) / (totalDurationS / 3600) : 0;
+  // Prefer the watch's moving-time average when supplied; falling back to the
+  // elapsed-time split aggregate keeps the line meaningful without lap data.
+  const avgSpeed = overallAvgPaceSecPerUnit != null && overallAvgPaceSecPerUnit > 0
+    ? 3600 / overallAvgPaceSecPerUnit
+    : totalDurationS > 0
+      ? (totalDistanceM / unitMeters) / (totalDurationS / 3600)
+      : 0;
 
   // Zoom the value axis to the actual spread of split speeds. Starting at zero
   // makes steady efforts look almost identical; a padded min/max range keeps

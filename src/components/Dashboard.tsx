@@ -1043,6 +1043,32 @@ export function Dashboard({ onLogout }: Props) {
   const deviceBadgeSerial = typeof selectedMetadata?.file_id?.serial_number === "number"
     ? String(selectedMetadata.file_id.serial_number)
     : "";
+  // The watch reports average pace using moving/timer time, not elapsed
+  // wall-clock time. `duration_s` from the activity is elapsed (includes
+  // pauses), so prefer the lap timer times when available. This mirrors the
+  // summary row at the bottom of the laps table.
+  const lapSummary = useMemo(() => {
+    const laps = selectedMetadata?.laps ?? [];
+    let distanceM = 0;
+    let timerTimeS = 0;
+    for (const lap of laps) {
+      if (typeof lap.total_distance_m === "number") distanceM += lap.total_distance_m;
+      const lapTime = typeof lap.total_timer_time_s === "number"
+        ? lap.total_timer_time_s
+        : (typeof lap.total_elapsed_time_s === "number" ? lap.total_elapsed_time_s : null);
+      if (lapTime != null) timerTimeS += Math.max(0, lapTime);
+    }
+    return { distanceM, timerTimeS };
+  }, [selectedMetadata]);
+  const overallAvgPaceSec = useMemo(() => {
+    if (lapSummary.distanceM > 0 && lapSummary.timerTimeS > 0) {
+      return lapSummary.timerTimeS / (lapSummary.distanceM / distanceDivisorValue);
+    }
+    if (selectedActivity && selectedActivity.distance_m > 0) {
+      return selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue);
+    }
+    return 0;
+  }, [lapSummary, selectedActivity, distanceDivisorValue]);
   const detailStats = useMemo(() => {
     if (!selectedActivity) return [] as Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }>;
     const out: Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }> = [];
@@ -1055,10 +1081,7 @@ export function Dashboard({ onLogout }: Props) {
 
     const session = selectedMetadata?.session ?? {};
     const metric = selectedMetadata?.activity_metrics ?? {};
-    const avgPaceSec = selectedActivity.distance_m > 0
-      ? selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue)
-      : 0;
-    const avgPaceText = formatPace(avgPaceSec, distanceSuffix);
+    const avgPaceText = formatPace(overallAvgPaceSec, distanceSuffix);
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
 
@@ -1094,7 +1117,7 @@ export function Dashboard({ onLogout }: Props) {
     if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
 
     return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, lapTimestampsUtc.length, t]);
+  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, lapTimestampsUtc.length, overallAvgPaceSec, t]);
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
@@ -1675,7 +1698,7 @@ export function Dashboard({ onLogout }: Props) {
                 <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
               </div>
-              <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} />
+              <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null} />
               <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
