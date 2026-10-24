@@ -242,6 +242,8 @@
   "heatmap.activities": "activities",
 
   "insights.emptyState": "Import and select an activity to unlock pace, power, cadence, and effort insights.",
+  "insights.showMore": "Show more insights",
+  "insights.hideMore": "Hide more insights",
   "insights.speedTrend": "Speed Trend",
   "insights.heartRateZoneTime": "Heart Rate Zone Time",
   "insights.hrHistogram": "HR Histogram",

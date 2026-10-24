@@ -146,8 +146,10 @@ export function CompareCharts({ compareIds, activities, theme, distanceUnit }: P
     grid: { left: 48, right: 16, top: 40, bottom: 46 },
     xAxis: {
       type: "value",
-      axisLabel: { 
-        color: axisColor, 
+      min: 0,
+      max: "dataMax",
+      axisLabel: {
+        color: axisColor,
         fontSize: 11,
         formatter: (val: number) => formatRelTime(val)
       },

@@ -5,7 +5,7 @@ import { ActivityChart } from "./ActivityChart";
 import { ActivitySplits } from "./ActivitySplits";
 import { ActivityMap } from "./ActivityMap";
 import { CompareCharts } from "./CompareCharts";
-import { ActivityInsights } from "./ActivityInsights";
+import { ActivityInsights, isRunSport } from "./ActivityInsights";
 import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
 import { OverviewLocationMap } from "./OverviewLocationMap";
 import { OverviewSportTypeDonut } from "./OverviewSportTypeDonut";
@@ -321,6 +321,7 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [showAllStats, setShowAllStats] = useState(false);
+  const [showMoreInsights, setShowMoreInsights] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
 
@@ -339,6 +340,11 @@ export function Dashboard({ onLogout }: Props) {
     loadSupporterStatus, theme, hrZoneBounds,
   } = useSettingsStore();
   const { t } = useTranslation();
+
+  // Runs hide the secondary insight charts by default; other sports show them.
+  useEffect(() => {
+    setShowMoreInsights(!isRunSport(selectedActivity?.sport));
+  }, [selectedActivity?.id, selectedActivity?.sport]);
 
   useEffect(() => {
     const close = () => { setContextMenu(null); setBulkExportDropdownOpen(false); setIsSortOpen(false); };
@@ -1636,7 +1642,7 @@ export function Dashboard({ onLogout }: Props) {
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
               <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} />
-              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>
@@ -1717,6 +1723,22 @@ export function Dashboard({ onLogout }: Props) {
                     </table>
                   </div>
                 </div>
+              )}
+              <div className="insight-more-toggle-row">
+                <button
+                  type="button"
+                  className={`detail-stats-toggle insight-more-toggle ${showMoreInsights ? "open" : ""}`}
+                  onClick={() => setShowMoreInsights((v) => !v)}
+                  aria-expanded={showMoreInsights}
+                >
+                  <span>{showMoreInsights ? t("insights.hideMore") : t("insights.showMore")}</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              </div>
+              {showMoreInsights && (
+                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               )}
             </>
           ) : (

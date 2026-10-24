@@ -282,6 +282,8 @@ export function ActivityChart({
     grid: { left: 48, right: 16, top: 36, bottom: 38 },
     xAxis: {
       type: "value",
+      min: 0,
+      max: "dataMax",
       axisLabel: {
         color: axisColor,
         fontSize: 11,
@@ -361,6 +363,8 @@ export function ActivityChart({
     grid: { left: 48, right: 16, top: 36, bottom: 38 },
     xAxis: {
       type: "value",
+      min: 0,
+      max: "dataMax",
       axisLabel: {
         color: axisColor,
         fontSize: 11,

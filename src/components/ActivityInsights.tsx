@@ -21,7 +21,16 @@ type Props = {
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
+  /** "primary" renders the always-visible panels, "more" the collapsible ones. */
+  mode?: "primary" | "more";
 };
+
+/** Runs get the secondary charts tucked away by default. */
+export function isRunSport(sport?: string): boolean {
+  if (!sport) return false;
+  const value = sport.toLowerCase();
+  return value.includes("run") || value.includes("jog");
+}
 
 function safeAvg(values: Array<number | null | undefined>): number | null {
   const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -57,8 +66,9 @@ export function ActivityInsights({
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
+  mode = "primary",
 }: Props) {
-    const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
@@ -168,6 +178,8 @@ export function ActivityInsights({
     grid: { left: 50, right: 16, top: 42, bottom: 46 },
     xAxis: {
       type: "value",
+      min: 0,
+      max: "dataMax",
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -220,6 +232,8 @@ export function ActivityInsights({
     grid: { left: 50, right: 16, top: 42, bottom: 46 },
     xAxis: {
       type: "value",
+      min: 0,
+      max: "dataMax",
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -304,6 +318,8 @@ export function ActivityInsights({
     grid: { left: 44, right: hasPowerData ? 44 : 16, top: 44, bottom: 44 },
     xAxis: {
       type: "value",
+      min: 0,
+      max: "dataMax",
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
@@ -597,42 +613,49 @@ export function ActivityInsights({
     },
   };
 
+  if (mode === "more") {
+    return (
+      <section className="insight-grid">
+        <article className="panel">
+          <h3>{tr("insights.speedTrend")}</h3>
+          <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+        </article>
+        {hasHeartRateData && (
+          <article className="panel">
+            <h3>{tr("insights.hrHistogram")}</h3>
+            <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+          </article>
+        )}
+        <article className="panel">
+          <h3>{hasPowerData ? tr("insights.cadenceAndPower") : tr("insights.cadence")}</h3>
+          <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+        </article>
+        <article className="panel">
+          <h3>{tr("insights.effortHeatmap")}</h3>
+          <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+        </article>
+      </section>
+    );
+  }
+
   return (
     <section className="insight-grid">
-      <article className="panel">
-        <h3>{tr("insights.speedTrend")}</h3>
-        <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
       {hasPowerData && hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
           <ReactECharts option={zoneOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
-      {hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.hrHistogram")}</h3>
-          <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      <article className="panel">
-        <h3>{hasPowerData ? tr("insights.cadenceAndPower") : tr("insights.cadence")}</h3>
-        <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
-      <article className="panel">
-        <h3>{tr("insights.effortHeatmap")}</h3>
-        <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
-      <article className="panel">
-        <h3>{tr("insights.elevation")}</h3>
-        <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
       {hasPowerData && hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.powerVsHeartRate")}</h3>
           <ReactECharts option={scatterOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
+      <article className="panel insight-panel-wide">
+        <h3>{tr("insights.elevation")}</h3>
+        <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+      </article>
     </section>
   );
 }
