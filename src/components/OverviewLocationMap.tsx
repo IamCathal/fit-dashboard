@@ -1,17 +1,30 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
-import type { RecordPoint } from "../types";
+import type { Activity, RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTranslation } from "../lib/i18n";
+import { api } from "../lib/api";
 
 type Props = {
   records: RecordPoint[];
+  activities: Activity[];
   mapStyle: MapStyle;
   setMapStyle: (style: MapStyle) => void;
+  onSelectActivity?: (activity: Activity) => void;
 };
 
 type BaseMapInfo = { label: string; tileUrl: string; attribution: string };
+
+type RouteLine = {
+  id: number;
+  name: string;
+  sport: string;
+  color: string;
+  coordinates: [number, number][];
+};
+
+type ViewMode = "routes" | "density";
 
 const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", BaseMapInfo> = {
   light: {
@@ -41,6 +54,25 @@ const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", B
   },
 };
 
+const SPORT_COLORS: Record<string, string> = {
+  run: "#22d3ee",
+  jog: "#22d3ee",
+  ride: "#f59e0b",
+  bike: "#f59e0b",
+  cycl: "#f59e0b",
+  walk: "#a3e635",
+  hike: "#a3e635",
+  swim: "#38bdf8",
+};
+
+function colorForSport(sport: string): string {
+  const value = sport.toLowerCase();
+  for (const [keyword, color] of Object.entries(SPORT_COLORS)) {
+    if (value.includes(keyword)) return color;
+  }
+  return "#a855f7";
+}
+
 function styleFromMap(ms: MapStyle, theme: "light" | "dark" | "paper" | "paper-dark"): StyleSpecification | string {
   const baseTheme = theme === "dark" || theme === "paper-dark" ? "dark" : "light";
   const actualStyle = ms === "default" ? baseTheme : ms;
@@ -67,17 +99,35 @@ function styleFromMap(ms: MapStyle, theme: "light" | "dark" | "paper" | "paper-d
 
 const HEAT_SOURCE_ID = "overview-heat-source";
 const CLUSTER_SOURCE_ID = "overview-cluster-source";
+const ROUTE_SOURCE_ID = "overview-route-source";
 const HEAT_LAYER_ID = "overview-heat-layer";
 const CLUSTER_LAYER_ID = "overview-cluster-layer";
 const CLUSTER_LABEL_LAYER_ID = "overview-cluster-label-layer";
 const POINT_LAYER_ID = "overview-point-layer";
+const ROUTE_LAYER_ID = "overview-route-layer";
 
-export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
+/** Coarse downsampling is plenty for a whole-history route overlay. */
+const ROUTE_RESOLUTION_MS = 60_000;
+/** Guard rail so a very large history does not fire unlimited requests. */
+const MAX_ROUTE_ACTIVITIES = 400;
+const ROUTE_FETCH_CONCURRENCY = 6;
+
+export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle, onSelectActivity }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const theme = useSettingsStore((s) => s.theme);
   const { t } = useTranslation();
   const selectedStyle = mapStyle === "default" ? theme : mapStyle;
+
+  const [viewMode, setViewMode] = useState<ViewMode>("routes");
+  const [routes, setRoutes] = useState<RouteLine[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(false);
+  const routeCacheRef = useRef<Map<number, RouteLine>>(new Map());
+  const activitiesRef = useRef(activities);
+  activitiesRef.current = activities;
+  const onSelectActivityRef = useRef(onSelectActivity);
+  onSelectActivityRef.current = onSelectActivity;
+  const hasFitRoutesRef = useRef(false);
 
   const geojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = records
@@ -93,19 +143,132 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
     return { type: "FeatureCollection", features };
   }, [records]);
 
-  function fitToData(map: maplibregl.Map) {
-    if (!geojson.features.length) return;
-    const first = geojson.features[0].geometry.coordinates;
-    const bounds = geojson.features.reduce(
-      (b, f) => b.extend(f.geometry.coordinates as [number, number]),
-      new maplibregl.LngLatBounds(first as [number, number], first as [number, number])
-    );
-    map.fitBounds(bounds, { padding: 48, maxZoom: 13, duration: 650 });
+  const routeGeojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.LineString>>(() => {
+    const features: GeoJSON.Feature<GeoJSON.LineString>[] = routes.map((route) => ({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: route.coordinates },
+      properties: { id: route.id, name: route.name, sport: route.sport, color: route.color },
+    }));
+    return { type: "FeatureCollection", features };
+  }, [routes]);
+
+  // Lazily fetch the actual GPS tracks for the filtered activities. Results are
+  // cached per activity so toggling between views does not refetch.
+  useEffect(() => {
+    if (viewMode !== "routes") return;
+    let cancelled = false;
+    const cache = routeCacheRef.current;
+    hasFitRoutesRef.current = false;
+
+    const candidates = activities
+      .filter((a) => typeof a.start_latitude === "number" && typeof a.start_longitude === "number")
+      .slice()
+      .sort((a, b) => Date.parse(b.start_ts_utc) - Date.parse(a.start_ts_utc))
+      .slice(0, MAX_ROUTE_ACTIVITIES);
+
+    const publish = () => {
+      if (cancelled) return;
+      setRoutes(
+        candidates
+          .map((a) => cache.get(a.id))
+          .filter((route): route is RouteLine => Boolean(route) && route!.coordinates.length >= 2),
+      );
+    };
+
+    const missing = candidates.filter((a) => !cache.has(a.id));
+    if (missing.length === 0) {
+      publish();
+      setRoutesLoading(false);
+      return;
+    }
+
+    setRoutesLoading(true);
+    void (async () => {
+      let index = 0;
+      const worker = async () => {
+        while (!cancelled && index < missing.length) {
+          const activity = missing[index++];
+          let route: RouteLine | null = null;
+          try {
+            const points = await api.getRecords(activity.id, ROUTE_RESOLUTION_MS);
+            const coordinates = points
+              .filter((p) => typeof p.latitude === "number" && typeof p.longitude === "number")
+              .map((p) => [p.longitude as number, p.latitude as number] as [number, number]);
+            route = {
+              id: activity.id,
+              name: activity.activity_name || activity.file_name,
+              sport: activity.sport || "",
+              color: colorForSport(activity.sport || ""),
+              coordinates,
+            };
+          } catch {
+            route = null;
+          }
+          // Cache even empty results so a failed/empty activity is not retried.
+          cache.set(
+            activity.id,
+            route ?? {
+              id: activity.id,
+              name: activity.activity_name || activity.file_name,
+              sport: activity.sport || "",
+              color: colorForSport(activity.sport || ""),
+              coordinates: [],
+            },
+          );
+          publish();
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(ROUTE_FETCH_CONCURRENCY, missing.length) }, () => worker()),
+      );
+      if (!cancelled) setRoutesLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, activities]);
+
+  function applyViewMode(map: maplibregl.Map) {
+    const routesVisible = viewMode === "routes";
+    if (map.getLayer(ROUTE_LAYER_ID)) {
+      map.setLayoutProperty(ROUTE_LAYER_ID, "visibility", routesVisible ? "visible" : "none");
+    }
+    for (const id of [HEAT_LAYER_ID, CLUSTER_LAYER_ID, CLUSTER_LABEL_LAYER_ID, POINT_LAYER_ID]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", routesVisible ? "none" : "visible");
+      }
+    }
   }
 
   function ensureSourcesAndLayers(map: maplibregl.Map) {
     const heatSrc = map.getSource(HEAT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const clusterSrc = map.getSource(CLUSTER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const routeSrc = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+
+    if (routeSrc) {
+      routeSrc.setData(routeGeojson);
+    } else {
+      map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeojson });
+    }
+
+    if (!map.getLayer(ROUTE_LAYER_ID)) {
+      map.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#22d3ee"],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 2, 1.2, 10, 2.2, 16, 3.4],
+          "line-opacity": 0.55,
+        },
+      });
+    }
 
     if (heatSrc) {
       heatSrc.setData(geojson);
@@ -223,7 +386,32 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
         },
       });
     }
+
+    applyViewMode(map);
   }
+
+  function fitToData(map: maplibregl.Map) {
+    const coords: [number, number][] = [];
+    if (viewMode === "routes") {
+      for (const route of routes) coords.push(...route.coordinates);
+    } else {
+      for (const feature of geojson.features) {
+        coords.push(feature.geometry.coordinates as [number, number]);
+      }
+    }
+    if (!coords.length) return;
+    const bounds = coords.reduce(
+      (b, coord) => b.extend(coord),
+      new maplibregl.LngLatBounds(coords[0], coords[0]),
+    );
+    map.fitBounds(bounds, { padding: 48, maxZoom: 13, duration: 650 });
+  }
+
+  const fitRef = useRef<() => void>(() => {});
+  fitRef.current = () => {
+    const map = mapRef.current;
+    if (map) fitToData(map);
+  };
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -242,7 +430,7 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
 
     map.on("load", () => {
       ensureSourcesAndLayers(map);
-      fitToData(map);
+      fitRef.current();
     });
 
     map.on("click", CLUSTER_LAYER_ID, (e) => {
@@ -258,6 +446,21 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
         .catch(() => {
           // Ignore expansion errors for stale cluster ids.
         });
+    });
+
+    map.on("click", ROUTE_LAYER_ID, (e) => {
+      const feature = e.features?.[0];
+      const id = Number(feature?.properties?.id);
+      if (!Number.isFinite(id)) return;
+      const activity = activitiesRef.current.find((a) => a.id === id);
+      if (activity) onSelectActivityRef.current?.(activity);
+    });
+
+    map.on("mouseenter", ROUTE_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", ROUTE_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "";
     });
 
     return () => {
@@ -298,16 +501,46 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
         map.off("idle", onIdle);
       };
     }
-  }, [geojson]);
+  }, [geojson, routeGeojson, viewMode]);
+
+  // Fit once per activity set when routes first become available.
+  useEffect(() => {
+    if (viewMode !== "routes" || routes.length === 0 || hasFitRoutesRef.current) return;
+    hasFitRoutesRef.current = true;
+    fitRef.current();
+  }, [routes, viewMode]);
+
+  // Refit when the user switches back to the routes view.
+  useEffect(() => {
+    if (viewMode === "routes" && routes.length > 0) fitRef.current();
+  }, [viewMode]);
 
   return (
     <div className="panel overview-location-panel">
       <div className="map-header" style={{ marginBottom: "0.6rem" }}>
         <div>
           <h3 style={{ marginBottom: "0.32rem" }}>{t("map.exploredLocations")}</h3>
-          <p className="panel-subtitle">{t("map.subtitle")}</p>
+          <p className="panel-subtitle">
+            {viewMode === "routes" ? t("map.subtitleRoutes") : t("map.subtitle")}
+          </p>
         </div>
         <div className="map-controls">
+          <div className="map-view-toggle" role="group" aria-label={t("map.viewMode")}>
+            <button
+              type="button"
+              className={viewMode === "routes" ? "active" : ""}
+              onClick={() => setViewMode("routes")}
+            >
+              {t("map.routes")}
+            </button>
+            <button
+              type="button"
+              className={viewMode === "density" ? "active" : ""}
+              onClick={() => setViewMode("density")}
+            >
+              {t("map.density")}
+            </button>
+          </div>
           <label className="map-control">
             <span className="small">{t("map.style")}</span>
             <select value={selectedStyle} onChange={(e) => setMapStyle(e.target.value as MapStyle)}>
@@ -322,11 +555,14 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
       <div className="overview-map-canvas" ref={mapContainerRef} />
 
       <div className="map-footer-actions">
-        <button className="btn-outline-secondary" onClick={() => {
-          const map = mapRef.current;
-          if (!map) return;
-          fitToData(map);
-        }}>
+        {viewMode === "routes" && (
+          <span className="small map-route-status">
+            {routesLoading
+              ? t("map.loadingRoutes")
+              : t("map.routesLoaded", { count: routes.length })}
+          </span>
+        )}
+        <button className="btn-outline-secondary" onClick={() => fitRef.current()}>
           {t("map.resetZoom")}
         </button>
       </div>

@@ -1641,7 +1641,16 @@ export function Dashboard({ onLogout }: Props) {
                   <OverviewSportTypeDonut activities={filtered} theme={theme} />
                 </div>
               </div>
-              <OverviewLocationMap records={overviewRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} />
+              <OverviewLocationMap
+                records={overviewRecords}
+                activities={filtered}
+                mapStyle={mapStyle}
+                setMapStyle={setMapStyle}
+                onSelectActivity={(activity) => {
+                  void selectActivity(activity);
+                  setTab("individual");
+                }}
+              />
               <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
               <OverviewActivityTable activities={filtered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
             </>

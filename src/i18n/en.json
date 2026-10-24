@@ -283,7 +283,13 @@
 
   "map.exploredLocations": "Explored Locations",
   "map.subtitle": "GPS density heatmap with auto-clustering at low zoom levels",
+  "map.subtitleRoutes": "Every filtered run drawn as a GPS track — click a route to open it",
   "map.style": "Style",
+  "map.viewMode": "Map view",
+  "map.routes": "Routes",
+  "map.density": "Density",
+  "map.loadingRoutes": "Loading routes...",
+  "map.routesLoaded": "{count} routes",
   "map.resetZoom": "Reset zoom",
 
   "donut.activityTypes": "Activity Types",
