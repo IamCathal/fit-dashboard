@@ -317,6 +317,17 @@
   "trend.distance": "Distance",
   "trend.duration": "Duration",
 
+  "records.title": "Personal Records",
+  "records.hint": "Fastest efforts from your filtered runs",
+  "records.fastest5k": "Fastest 5K",
+  "records.fastest10k": "Fastest 10K",
+  "records.fastestHalf": "Fastest Half Marathon",
+  "records.fastestMarathon": "Fastest Marathon",
+  "records.longestRun": "Longest Run",
+  "records.longestDuration": "Longest Duration",
+  "records.biggestClimb": "Biggest Climb",
+  "records.estimatedFootnote": "Distance bests are estimated from each run's average pace ({pace}).",
+
   "compare.selectActivities": "Select up to 4 activities from the sidebar using the checkboxes to compare them.",
   "compare.loading": "Loading comparison data...",
   "compare.resetZoom": "Reset Zoom",

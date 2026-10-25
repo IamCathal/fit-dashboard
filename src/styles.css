@@ -4789,3 +4789,118 @@ body.map-fullscreen-open {
 .activity-meta-row .spacer {
   flex: 1;
 }
+
+/* ── Personal Records ──────────────────────────────────────────────── */
+
+.overview-records-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  /* Main content is a flex column and .panel clips overflow, so without this
+     the panel collapses instead of sizing to its records grid. */
+  flex-shrink: 0;
+}
+
+.overview-records-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.overview-records-head h3 {
+  margin: 0;
+}
+
+.overview-records-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.overview-records-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+
+.record-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--stat-bg, var(--panel-solid));
+  border: 1px solid var(--stat-border, var(--border));
+  border-radius: 12px;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.record-card:hover:not(:disabled) {
+  border-color: var(--border-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.record-card:disabled {
+  cursor: default;
+}
+
+.record-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: var(--accent-glow);
+  margin-bottom: 0.1rem;
+}
+
+.record-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.record-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  color: var(--text);
+}
+
+.record-sub {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.record-date {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.record-name {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.overview-records-footnote {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

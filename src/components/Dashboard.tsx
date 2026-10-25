@@ -10,6 +10,7 @@ import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
 import { OverviewLocationMap } from "./OverviewLocationMap";
 import { OverviewTrainingPattern } from "./OverviewTrainingPattern";
 import { OverviewWeeklyTrend } from "./OverviewWeeklyTrend";
+import { OverviewPersonalRecords } from "./OverviewPersonalRecords";
 import { OverviewActivityTable } from "./OverviewActivityTable";
 import { DatePickerPopover } from "./DatePickerPopover";
 import { DateRange } from "react-day-picker";
@@ -1679,6 +1680,14 @@ export function Dashboard({ onLogout }: Props) {
                 }}
               />
               <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
+              <OverviewPersonalRecords
+                activities={filtered}
+                distanceUnit={distanceUnit}
+                onSelectActivity={(activity) => {
+                  void selectActivity(activity);
+                  setTab("individual");
+                }}
+              />
               <OverviewActivityTable activities={filtered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
             </>
             )
