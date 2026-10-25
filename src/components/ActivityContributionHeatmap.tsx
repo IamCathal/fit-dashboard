@@ -1,9 +1,19 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Activity } from "../types";
 import { useTranslation } from "../lib/i18n";
+import { useSettingsStore } from "../stores/settingsStore";
+import { distanceDivisor, distanceLabel } from "../lib/units";
 
 type Props = {
   activities: Activity[];
+  onSelectActivity?: (activity: Activity) => void;
+};
+
+type AnchorState = {
+  key: string;
+  x: number;
+  y: number;
 };
 
 function toDateKey(d: Date): string {
@@ -25,18 +35,33 @@ function addDays(d: Date, n: number): Date {
   return copy;
 }
 
-export function ActivityContributionHeatmap({ activities }: Props) {
-  const { t } = useTranslation();
-  const { weeks, counts, maxCount, startDate, endDate } = useMemo(() => {
+function formatDuration(seconds: number): string {
+  const total = Math.round(Math.max(0, seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function ActivityContributionHeatmap({ activities, onSelectActivity }: Props) {
+  const { t, language } = useTranslation();
+  const distanceUnit = useSettingsStore((s) => s.distanceUnit);
+  const [hover, setHover] = useState<AnchorState | null>(null);
+  const [pinned, setPinned] = useState<AnchorState | null>(null);
+
+  const { weeks, daysByKey, maxCount, startDate, endDate } = useMemo(() => {
     const today = startOfDay(new Date());
     const rangeStart = addDays(today, -364);
 
-    const countMap = new Map<string, number>();
+    const grouped = new Map<string, Activity[]>();
     for (const a of activities) {
       const dt = new Date(a.start_ts_utc);
       if (Number.isNaN(dt.getTime())) continue;
       const key = toDateKey(startOfDay(dt));
-      countMap.set(key, (countMap.get(key) ?? 0) + 1);
+      const existing = grouped.get(key);
+      if (existing) existing.push(a);
+      else grouped.set(key, [a]);
     }
 
     const gridStart = addDays(rangeStart, -rangeStart.getDay());
@@ -53,18 +78,40 @@ export function ActivityContributionHeatmap({ activities }: Props) {
     }
 
     let peak = 0;
-    for (const value of countMap.values()) {
-      if (value > peak) peak = value;
+    for (const value of grouped.values()) {
+      if (value.length > peak) peak = value.length;
     }
 
     return {
       weeks: weekChunks,
-      counts: countMap,
+      daysByKey: grouped,
       maxCount: peak,
       startDate: rangeStart,
       endDate: today,
     };
   }, [activities]);
+
+  useEffect(() => {
+    if (!pinned) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".overview-heatmap-tooltip, .overview-heatmap-weeks .overview-heatmap-cell")) {
+        return;
+      }
+      setPinned(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPinned(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [pinned]);
 
   const cellColor = (count: number): string => {
     if (count <= 0) return "rgba(148, 163, 184, 0.20)";
@@ -76,6 +123,47 @@ export function ActivityContributionHeatmap({ activities }: Props) {
   };
 
   const rangeLabel = `${startDate.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${endDate.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+
+  const active = hover ?? pinned;
+  const activeDate = active ? new Date(`${active.key}T00:00:00`) : null;
+  const activeActivities = active ? (daysByKey.get(active.key) ?? []) : [];
+  const activeCount = activeActivities.length;
+  const activeDistance = activeActivities.reduce((sum, a) => sum + (a.distance_m || 0), 0);
+  const activeDuration = activeActivities.reduce((sum, a) => sum + (a.duration_s || 0), 0);
+
+  const sportCounts = new Map<string, number>();
+  for (const a of activeActivities) {
+    const sport = a.sport?.trim() || "—";
+    sportCounts.set(sport, (sportCounts.get(sport) ?? 0) + 1);
+  }
+  const sortedSports = Array.from(sportCounts.entries()).sort((a, b) => b[1] - a[1]);
+
+  const tooltipWidth = 280;
+  const tooltipLeft = active
+    ? active.x + 14 + tooltipWidth > window.innerWidth
+      ? Math.max(8, active.x - tooltipWidth - 14)
+      : active.x + 14
+    : 0;
+  const tooltipTop = active ? Math.max(8, Math.min(active.y, window.innerHeight - 360)) : 0;
+
+  const handleCellClick = (key: string, cell: HTMLElement) => {
+    const dayActivities = daysByKey.get(key) ?? [];
+    setHover(null);
+    if (dayActivities.length === 0) {
+      setPinned(null);
+      return;
+    }
+    const rect = cell.getBoundingClientRect();
+    setPinned((current) =>
+      current?.key === key ? null : { key, x: rect.right, y: rect.top }
+    );
+  };
+
+  const handleActivityClick = (activity: Activity) => {
+    setPinned(null);
+    setHover(null);
+    onSelectActivity?.(activity);
+  };
 
   return (
     <div className="panel overview-activity-contribution-panel">
@@ -108,13 +196,21 @@ export function ActivityContributionHeatmap({ activities }: Props) {
                 <div key={wi} className="overview-heatmap-week">
                   {week.map((d) => {
                     const key = toDateKey(d);
-                    const count = counts.get(key) ?? 0;
+                    const count = daysByKey.get(key)?.length ?? 0;
+                    const isActive = active?.key === key;
+                    const isPinned = pinned?.key === key;
                     return (
                       <div
                         key={key}
-                        className="overview-heatmap-cell"
-                        title={`${d.toDateString()} - ${count} ${count === 1 ? t("heatmap.activity") : t("heatmap.activities")}`}
+                        className={`overview-heatmap-cell${isActive ? " is-hovered" : ""}${isPinned ? " is-pinned" : ""}`}
+                        aria-label={`${d.toDateString()} - ${count} ${count === 1 ? t("heatmap.activity") : t("heatmap.activities")}`}
                         style={{ backgroundColor: cellColor(count) }}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHover({ key, x: rect.right, y: rect.top });
+                        }}
+                        onMouseLeave={() => setHover(null)}
+                        onClick={(e) => handleCellClick(key, e.currentTarget)}
                       />
                     );
                   })}
@@ -133,6 +229,79 @@ export function ActivityContributionHeatmap({ activities }: Props) {
         <div className="overview-heatmap-cell" style={{ backgroundColor: "#22d3ee" }} />
         <span>{t("heatmap.more")}</span>
       </div>
+
+      {active && activeDate && createPortal(
+        <div
+          className={`overview-heatmap-tooltip${pinned ? " is-pinned" : ""}`}
+          style={{
+            left: tooltipLeft,
+            top: tooltipTop,
+            width: tooltipWidth,
+            pointerEvents: pinned ? "auto" : "none",
+          }}
+          role="tooltip"
+        >
+          <div className="overview-heatmap-tooltip-date">
+            {activeDate.toLocaleDateString(language, {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          </div>
+          <div className="overview-heatmap-tooltip-count">
+            {activeCount} {activeCount === 1 ? t("heatmap.activity") : t("heatmap.activities")}
+          </div>
+          {activeCount > 0 && (
+            <>
+              <div className="overview-heatmap-tooltip-stats">
+                <div>
+                  <span>{t("overview.totalDistance")}</span>
+                  <strong>
+                    {(activeDistance / distanceDivisor(distanceUnit)).toFixed(1)}{" "}
+                    {distanceLabel(distanceUnit)}
+                  </strong>
+                </div>
+                <div>
+                  <span>{t("overview.totalDuration")}</span>
+                  <strong>{formatDuration(activeDuration)}</strong>
+                </div>
+              </div>
+              {sortedSports.length > 0 && (
+                <div className="overview-heatmap-tooltip-sports">
+                  {sortedSports.map(([sport, sportCount]) => (
+                    <span key={sport} className="overview-heatmap-sport-chip">
+                      {sport}
+                      <em>{sportCount}</em>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <ul className="overview-heatmap-tooltip-list">
+                {activeActivities.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      className="overview-heatmap-activity-btn"
+                      disabled={!onSelectActivity}
+                      onClick={() => handleActivityClick(a)}
+                    >
+                      <span className="overview-heatmap-tooltip-name">
+                        {a.activity_name?.trim() || a.sport || "—"}
+                      </span>
+                      <span className="overview-heatmap-tooltip-meta">
+                        {(a.distance_m / distanceDivisor(distanceUnit)).toFixed(2)}{" "}
+                        {distanceLabel(distanceUnit)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

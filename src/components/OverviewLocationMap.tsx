@@ -55,8 +55,8 @@ const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", B
 };
 
 const SPORT_COLORS: Record<string, string> = {
-  run: "#22d3ee",
-  jog: "#22d3ee",
+  run: "#ec4899",
+  jog: "#ec4899",
   ride: "#f59e0b",
   bike: "#f59e0b",
   cycl: "#f59e0b",

@@ -97,6 +97,8 @@
   "overview.avgDistancePerActivity": "Avg Distance / Activity",
   "overview.avgDurationPerActivity": "Avg Duration / Activity",
   "overview.devices": "Devices",
+  "overview.showMoreStats": "Show more stats",
+  "overview.showLessStats": "Show less stats",
 
   "detail.duration": "Duration",
   "detail.distance": "Distance",
@@ -297,6 +299,19 @@
 
   "donut.activityTypes": "Activity Types",
   "donut.activities": "Activities",
+
+  "pattern.title": "Training Pattern",
+  "pattern.morning": "Morning",
+  "pattern.afternoon": "Afternoon",
+  "pattern.evening": "Evening",
+  "pattern.night": "Night",
+  "pattern.mon": "Mon",
+  "pattern.tue": "Tue",
+  "pattern.wed": "Wed",
+  "pattern.thu": "Thu",
+  "pattern.fri": "Fri",
+  "pattern.sat": "Sat",
+  "pattern.sun": "Sun",
 
   "trend.weeklyTrainingTrend": "Weekly Training Trend",
   "trend.distance": "Distance",

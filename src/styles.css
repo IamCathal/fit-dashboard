@@ -2102,6 +2102,17 @@ button:focus-visible {
   margin-top: 0.75rem;
 }
 
+.overview-stats-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.overview-stats-extra {
+  width: 100%;
+}
+
 .detail-stats-toggle {
   display: inline-flex;
   align-items: center;
@@ -2508,7 +2519,8 @@ button:focus-visible {
   min-height: 0;
 }
 
-.overview-sport-donut-panel h3 {
+.overview-sport-donut-panel h3,
+.overview-training-pattern-panel h3 {
   margin-bottom: 0.35rem;
 }
 
@@ -3014,6 +3026,159 @@ body.map-fullscreen-open {
   width: 12px;
   height: 12px;
   border-radius: 2px;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.overview-heatmap-weeks .overview-heatmap-cell {
+  cursor: pointer;
+}
+
+.overview-heatmap-weeks .overview-heatmap-cell:hover,
+.overview-heatmap-weeks .overview-heatmap-cell.is-hovered {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 1px var(--panel-solid), 0 0 6px rgba(34, 211, 238, 0.55);
+  z-index: 1;
+}
+
+.overview-heatmap-weeks .overview-heatmap-cell.is-pinned {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 8px rgba(34, 211, 238, 0.65);
+}
+
+.overview-heatmap-tooltip {
+  position: fixed;
+  z-index: 2000;
+  pointer-events: none;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  background: var(--panel-solid);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.overview-heatmap-tooltip-date {
+  font-weight: 700;
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+}
+
+.overview-heatmap-tooltip-count {
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.overview-heatmap-tooltip-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.overview-heatmap-tooltip-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.overview-heatmap-tooltip-stats span {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.overview-heatmap-tooltip-stats strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.overview-heatmap-tooltip-sports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.overview-heatmap-sport-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--text);
+  font-size: 0.68rem;
+  text-transform: capitalize;
+}
+
+.overview-heatmap-sport-chip em {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.overview-heatmap-tooltip-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.overview-heatmap-tooltip-list li {
+  display: flex;
+}
+
+.overview-heatmap-activity-btn {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.2rem 0.3rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-heatmap-tooltip.is-pinned .overview-heatmap-activity-btn:hover,
+.overview-heatmap-tooltip.is-pinned .overview-heatmap-activity-btn:focus-visible {
+  background: rgba(34, 211, 238, 0.14);
+  outline: none;
+}
+
+.overview-heatmap-activity-btn:disabled {
+  cursor: default;
+}
+
+.overview-heatmap-tooltip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.overview-heatmap-tooltip-meta {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-heatmap-tooltip-more {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
 }
 
 .overview-heatmap-legend {

@@ -8,7 +8,7 @@ import { CompareCharts } from "./CompareCharts";
 import { ActivityInsights, isRunSport } from "./ActivityInsights";
 import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
 import { OverviewLocationMap } from "./OverviewLocationMap";
-import { OverviewSportTypeDonut } from "./OverviewSportTypeDonut";
+import { OverviewTrainingPattern } from "./OverviewTrainingPattern";
 import { OverviewWeeklyTrend } from "./OverviewWeeklyTrend";
 import { OverviewActivityTable } from "./OverviewActivityTable";
 import { DatePickerPopover } from "./DatePickerPopover";
@@ -328,6 +328,7 @@ export function Dashboard({ onLogout }: Props) {
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [showAllStats, setShowAllStats] = useState(false);
+  const [showMoreOverviewStats, setShowMoreOverviewStats] = useState(false);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
@@ -1628,22 +1629,43 @@ export function Dashboard({ onLogout }: Props) {
             ) : (
             <>
               <div className="stats-row">
-                <div className="stat-card"><div className="stat-icon"><IconActivity /></div><div className="stat-value">{filtered.length}</div><div className="stat-label">{t("overview.filteredActivities")}</div></div>
                 <div className="stat-card"><div className="stat-icon"><IconDistance /></div><div className="stat-value">{totalDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.totalDistance")}</div></div>
                 <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.totalDuration")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconSport /></div><div className="stat-value">{filteredSports.length}</div><div className="stat-label">{t("overview.uniqueSports")}</div></div>
-              </div>
-              <div className="stats-row">
                 <div className="stat-card"><div className="stat-icon"><IconAvg /></div><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgDistancePerActivity")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDurationShort(avgDuration)}</div><div className="stat-label">{t("overview.avgDurationPerActivity")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconDevice /></div><div className="stat-value">{filteredDevices.length}</div><div className="stat-label">{t("overview.devices")}</div></div>
+              </div>
+              <div className="detail-stats-more overview-stats-more">
+                <button
+                  type="button"
+                  className={`detail-stats-toggle ${showMoreOverviewStats ? "open" : ""}`}
+                  onClick={() => setShowMoreOverviewStats((v) => !v)}
+                  aria-expanded={showMoreOverviewStats}
+                >
+                  <span>{showMoreOverviewStats ? t("overview.showLessStats") : t("overview.showMoreStats")}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {showMoreOverviewStats && (
+                  <div className="stats-row overview-stats-extra">
+                    <div className="stat-card"><div className="stat-icon"><IconActivity /></div><div className="stat-value">{filtered.length}</div><div className="stat-label">{t("overview.filteredActivities")}</div></div>
+                    <div className="stat-card"><div className="stat-icon"><IconSport /></div><div className="stat-value">{filteredSports.length}</div><div className="stat-label">{t("overview.uniqueSports")}</div></div>
+                    <div className="stat-card"><div className="stat-icon"><IconDevice /></div><div className="stat-value">{filteredDevices.length}</div><div className="stat-label">{t("overview.devices")}</div></div>
+                    <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDurationShort(avgDuration)}</div><div className="stat-label">{t("overview.avgDurationPerActivity")}</div></div>
+                  </div>
+                )}
               </div>
               <div className="overview-contribution-row">
                 <div className="overview-contribution-main">
-                  <ActivityContributionHeatmap activities={filtered} />
+                  <ActivityContributionHeatmap
+                    activities={filtered}
+                    onSelectActivity={(activity) => {
+                      void selectActivity(activity);
+                      setTab("individual");
+                    }}
+                  />
                 </div>
                 <div className="overview-contribution-side">
-                  <OverviewSportTypeDonut activities={filtered} theme={theme} />
+                  <OverviewTrainingPattern activities={filtered} theme={theme} />
                 </div>
               </div>
               <OverviewLocationMap
