@@ -5,11 +5,13 @@ import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
+import { isRunSport } from "./ActivityInsights";
 
 type Props = {
   records: RecordPoint[];
   mapStyle: MapStyle;
   setMapStyle: (style: MapStyle) => void;
+  sport?: string;
   lapTimestampsUtc?: string[];
   /** Reports the current playback position (ms from activity start) so other
    *  charts can render only the data up to the playhead. */
@@ -420,7 +422,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [], onPlaybackChange }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -442,7 +444,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
   const [pathColorMode, setPathColorMode] = useState<PathColorMode>("heart_rate");
   const [terrainEnabled, setTerrainEnabled] = useState(false);
-  const [telemetryEnabled, setTelemetryEnabled] = useState(true);
+  // Runs default to a clean route view; telemetry can still be toggled on.
+  const [telemetryEnabled, setTelemetryEnabled] = useState(() => !isRunSport(sport));
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeDurationPreset, setActiveDurationPreset] = useState<number | null>(DEFAULT_DURATION_PRESET);
@@ -551,6 +554,9 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       popupRef.current?.remove();
     }
   }, [telemetryEnabled]);
+  useEffect(() => {
+    setTelemetryEnabled(!isRunSport(sport));
+  }, [sport]);
   useEffect(() => {
     timelineIndexRef.current = timelineIndex;
     playheadFloatRef.current = timelineIndex;

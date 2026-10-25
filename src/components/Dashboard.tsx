@@ -1741,7 +1741,7 @@ export function Dashboard({ onLogout }: Props) {
               </div>
               <div className="detail-grid">
                 <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} /></div>
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
+                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
               </div>
               <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null} />
               <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
