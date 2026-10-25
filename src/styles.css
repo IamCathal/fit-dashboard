@@ -702,25 +702,6 @@
   box-decoration-break: clone;
 }
 
-/* Eyebrow numbering on panel headings */
-:root[data-theme="paper"] .main-content,
-:root[data-theme="paper-dark"] .main-content {
-  counter-reset: paper-panel;
-}
-
-:root[data-theme="paper"] .panel,
-:root[data-theme="paper-dark"] .panel {
-  counter-increment: paper-panel;
-}
-
-:root[data-theme="paper"] .panel h3::before,
-:root[data-theme="paper-dark"] .panel h3::before {
-  content: counter(paper-panel, decimal-leading-zero) " / ";
-  color: var(--text-muted);
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
 /* Pink secondary accent for the Compare tab */
 :root[data-theme="paper"] #tab-compare.active,
 :root[data-theme="paper-dark"] #tab-compare.active {
