@@ -1,5 +1,7 @@
 This is my fork and I'm customising it purely for my own use case. Most commits done with `deepseek-v4.1-flash-1017`
 
+`docker compose -f docker-compose-build.yml up --build`
+
 <p align="center">
   <img src="src/assets/app-icon.svg" alt="FIT Dashboard" width="80" />
 </p>

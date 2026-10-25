@@ -283,7 +283,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
             position: "top" as const,
             formatter: `${formatPace(split.paceMinPerUnit)} ★`,
             color: accentColor,
-            fontSize: 12,
+            fontSize: 14,
             fontWeight: 600,
           }
         : undefined,
@@ -319,7 +319,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
         return html;
       },
     },
-    grid: { left: 52, right: 16, top: 30, bottom: 34 },
+    grid: { left: 52, right: 16, top: 38, bottom: 34 },
     xAxis: {
       type: "category",
       data: splits.map((split) => String(split.index)),
@@ -351,7 +351,8 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
           show: true,
           position: "top",
           color: axisColor,
-          fontSize: 12,
+          fontSize: 14,
+          fontWeight: 600,
           formatter: (params: any) => {
             const split: Split | undefined = params?.data?.split;
             return split ? formatPace(split.paceMinPerUnit) : "";

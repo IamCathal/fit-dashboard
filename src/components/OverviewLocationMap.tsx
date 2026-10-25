@@ -129,6 +129,8 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   const onSelectActivityRef = useRef(onSelectActivity);
   onSelectActivityRef.current = onSelectActivity;
   const hasFitRoutesRef = useRef(false);
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
 
   const geojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = records
@@ -152,6 +154,14 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
     }));
     return { type: "FeatureCollection", features };
   }, [routes]);
+
+  // Keep the latest data in refs so the map's one-time "load" handler (and any
+  // other stale closure) always applies the current routes instead of the
+  // empty collections captured on the first render.
+  const geojsonRef = useRef(geojson);
+  geojsonRef.current = geojson;
+  const routeGeojsonRef = useRef(routeGeojson);
+  routeGeojsonRef.current = routeGeojson;
 
   // Lazily fetch the actual GPS tracks for the filtered activities. Results are
   // cached per activity so toggling between views does not refetch.
@@ -232,7 +242,7 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   }, [viewMode, activities]);
 
   function applyViewMode(map: maplibregl.Map) {
-    const routesVisible = viewMode === "routes";
+    const routesVisible = viewModeRef.current === "routes";
     if (map.getLayer(ROUTE_LAYER_ID)) {
       map.setLayoutProperty(ROUTE_LAYER_ID, "visibility", routesVisible ? "visible" : "none");
     }
@@ -247,11 +257,13 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
     const heatSrc = map.getSource(HEAT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const clusterSrc = map.getSource(CLUSTER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const routeSrc = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const currentGeojson = geojsonRef.current;
+    const currentRouteGeojson = routeGeojsonRef.current;
 
     if (routeSrc) {
-      routeSrc.setData(routeGeojson);
+      routeSrc.setData(currentRouteGeojson);
     } else {
-      map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeojson });
+      map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: currentRouteGeojson });
     }
 
     if (!map.getLayer(ROUTE_LAYER_ID)) {
@@ -272,17 +284,17 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
     }
 
     if (heatSrc) {
-      heatSrc.setData(geojson);
+      heatSrc.setData(currentGeojson);
     } else {
-      map.addSource(HEAT_SOURCE_ID, { type: "geojson", data: geojson });
+      map.addSource(HEAT_SOURCE_ID, { type: "geojson", data: currentGeojson });
     }
 
     if (clusterSrc) {
-      clusterSrc.setData(geojson);
+      clusterSrc.setData(currentGeojson);
     } else {
       map.addSource(CLUSTER_SOURCE_ID, {
         type: "geojson",
-        data: geojson,
+        data: currentGeojson,
         cluster: true,
         clusterRadius: 38,
         clusterMaxZoom: 11,

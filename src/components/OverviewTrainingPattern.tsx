@@ -84,7 +84,7 @@ export function OverviewTrainingPattern({ activities, theme }: Props) {
       itemWidth: 10,
       itemHeight: 10,
     },
-    grid: { left: 8, right: 8, top: 12, bottom: 44, containLabel: true },
+    grid: { left: 8, right: 8, top: 24, bottom: 44, containLabel: true },
     xAxis: {
       type: "category",
       data: dayLabels,
@@ -98,13 +98,32 @@ export function OverviewTrainingPattern({ activities, theme }: Props) {
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
     },
-    series: seriesData.map((s) => ({
+    series: seriesData.map((s, seriesIndex) => ({
       name: t(s.labelKey),
       type: "bar",
       stack: "total",
       barMaxWidth: 26,
       itemStyle: { color: s.color },
       emphasis: { focus: "series" },
+      // The last stacked series sits at the top of the stack, so its label can
+      // show the total number of activities for that day.
+      label: seriesIndex === seriesData.length - 1
+        ? {
+            show: true,
+            position: "top" as const,
+            color: axisColor,
+            fontSize: 13,
+            fontWeight: 600,
+            formatter: (params: any) => {
+              const dayIndex = Number(params?.dataIndex);
+              const total = seriesData.reduce(
+                (sum, series) => sum + (series.data[dayIndex] ?? 0),
+                0,
+              );
+              return total > 0 ? String(total) : "";
+            },
+          }
+        : undefined,
       data: s.data,
     })),
   };

@@ -2498,6 +2498,7 @@ button:focus-visible {
 .overview-activity-contribution-panel .overview-heatmap-wrap {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .overview-sport-donut-panel h3,
@@ -2951,17 +2952,22 @@ body.map-fullscreen-open {
 }
 
 .overview-heatmap-wrap {
-  overflow-x: auto;
+  overflow: hidden;
   padding-top: 0.35rem;
 }
 
 .overview-heatmap-grid {
-  min-width: 760px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
 }
 
 .overview-heatmap-months {
   display: grid;
-  grid-template-columns: repeat(53, 12px);
+  grid-template-columns: repeat(53, minmax(0, 1fr));
   gap: 4px;
   margin-left: 30px;
   margin-bottom: 6px;
@@ -2971,17 +2977,21 @@ body.map-fullscreen-open {
   font-size: 0.72rem;
   color: var(--text-muted);
   text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .overview-heatmap-body {
   display: flex;
+  flex: 1;
+  min-height: 0;
   gap: 6px;
 }
 
 .overview-heatmap-daylabels {
   width: 24px;
   display: grid;
-  grid-template-rows: repeat(7, 12px);
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   row-gap: 4px;
   font-size: 0.68rem;
   color: var(--text-muted);
@@ -2992,14 +3002,16 @@ body.map-fullscreen-open {
 .overview-heatmap-daylabels span:nth-child(3) { grid-row: 6; }
 
 .overview-heatmap-weeks {
+  flex: 1;
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(53, 12px);
+  grid-template-columns: repeat(53, minmax(0, 1fr));
   gap: 4px;
 }
 
 .overview-heatmap-week {
   display: grid;
-  grid-template-rows: repeat(7, 12px);
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -3008,6 +3020,13 @@ body.map-fullscreen-open {
   height: 12px;
   border-radius: 2px;
   transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.overview-heatmap-weeks .overview-heatmap-cell {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .overview-heatmap-weeks .overview-heatmap-cell {

@@ -561,6 +561,17 @@ export function ActivityInsights({
         barGap: "0%",
         barWidth: "96%",
         itemStyle: { borderRadius: [2, 2, 0, 0] },
+        label: {
+          show: true,
+          position: "top",
+          color: axisColor,
+          fontSize: 9,
+          formatter: (params: any) => {
+            const value = Number(params?.value);
+            return Number.isFinite(value) && value > 0 ? String(value) : "";
+          },
+        },
+        labelLayout: { hideOverlap: true },
         data: hrHistogram.counts.map((count, idx) => {
           const centerHr = hrHistogram.centers[idx] ?? 0;
           const zone = hrZones[resolveHeartRateZoneIndex(centerHr, hrZones)];
