@@ -94,6 +94,7 @@
   "detail.avgSpeed": "Vel. media",
   "detail.maxSpeed": "Vel. max",
   "detail.avgHr": "FC media",
+  "detail.date": "Data",
   "detail.maxHr": "FC max",
   "detail.maxAltitude": "Alt. max",
   "detail.avgPower": "Pot. media",

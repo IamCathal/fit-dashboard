@@ -175,6 +175,9 @@ function IconDistance() {
 function IconClock() {
   return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
 }
+function IconCalendar() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
+}
 function IconSport() {
   return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>;
 }
@@ -1091,6 +1094,7 @@ export function Dashboard({ onLogout }: Props) {
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
     if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart");
+    push("date", t("detail.date"), formatDate(selectedActivity.start_ts_utc), "calendar");
 
     // Secondary stats — hidden behind the "show more" toggle.
     if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
@@ -1152,7 +1156,7 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [selectedMetadata?.laps, distanceDivisorValue, distanceSuffix]);
 
-  const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr"];
+  const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr", "date"];
   const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
   const secondaryStats = detailStats.filter((s) => !primaryStatKeys.includes(s.key));
 
@@ -1160,6 +1164,7 @@ export function Dashboard({ onLogout }: Props) {
     <div key={s.key} className="mini-stat">
       <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
         {s.icon === "clock" && <IconClock />}
+        {s.icon === "calendar" && <IconCalendar />}
         {s.icon === "distance" && <IconDistance />}
         {s.icon === "speed" && <IconSpeed />}
         {s.icon === "heart" && <IconHeart />}
