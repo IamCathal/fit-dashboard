@@ -1,5 +1,8 @@
 This is my fork and I'm customising it purely for my own use case. Most commits done with `deepseek-v4.1-flash-1017`
 
+<details>
+<summary>Original FIT Dashboard README</summary>
+
 `docker compose -f docker-compose-build.yml up --build`
 
 <p align="center">
@@ -418,3 +421,5 @@ Copyright &copy; 2025 Arpan Ghosh. Licensed under the [GNU Affero General Public
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=arpanghosh8453/fit-dashboard&type=date&legend=top-left)](https://www.star-history.com/#arpanghosh8453/fit-dashboard&type=date&legend=top-left)
+
+</details>
