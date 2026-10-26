@@ -1,6 +1,6 @@
 import axios from "axios";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Activity, OverviewStats, RecordPoint } from "../types";
+import type { Activity, OverviewRoute, OverviewStats, RecordPoint } from "../types";
 
 type StorageInfo = {
   data_dir: string;
@@ -214,6 +214,27 @@ export const api = {
     }
     const res = await webClient.get(`/records/${activityId}`, {
       params: { resolution_ms: resolutionMs }
+    });
+    return res.data;
+  },
+
+  /**
+   * Fetch downsampled GPS tracks for many activities in a single request.
+   * Results are ordered chronologically by activity start time.
+   */
+  async getOverviewRoutes(
+    activityIds: number[],
+    resolutionMs = 60000,
+    limit = 400,
+  ): Promise<OverviewRoute[]> {
+    if (activityIds.length === 0) return [];
+    if (isTauriRuntime()) {
+      return invoke("get_overview_routes", { activityIds, resolutionMs, limit });
+    }
+    const res = await webClient.post("/overview-routes", {
+      activity_ids: activityIds,
+      resolution_ms: resolutionMs,
+      limit,
     });
     return res.data;
   },

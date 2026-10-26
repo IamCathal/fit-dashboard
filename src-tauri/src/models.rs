@@ -55,6 +55,17 @@ pub struct OverviewStats {
     pub total_duration_s: f64,
 }
 
+/// A downsampled GPS track for one activity, used by the overview map.
+/// Coordinates are `[longitude, latitude]` pairs in chronological order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OverviewRoute {
+    pub id: i64,
+    pub name: String,
+    pub sport: String,
+    pub start_ts_utc: String,
+    pub coordinates: Vec<[f64; 2]>,
+}
+
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 #[derive(Debug, Deserialize)]
 pub struct Credentials {

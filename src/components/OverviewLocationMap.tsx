@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { Activity, RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
@@ -20,6 +20,7 @@ type RouteLine = {
   id: number;
   name: string;
   sport: string;
+  start_ts_utc: string;
   color: string;
   coordinates: [number, number][];
 };
@@ -108,9 +109,10 @@ const ROUTE_LAYER_ID = "overview-route-layer";
 
 /** Coarse downsampling is plenty for a whole-history route overlay. */
 const ROUTE_RESOLUTION_MS = 60_000;
-/** Guard rail so a very large history does not fire unlimited requests. */
+/** Guard rail so a very large history does not request unlimited tracks. */
 const MAX_ROUTE_ACTIVITIES = 400;
-const ROUTE_FETCH_CONCURRENCY = 6;
+/** How long the chronological draw-in animation lasts. */
+const REVEAL_DURATION_MS = 5_000;
 
 export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle, onSelectActivity }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -121,7 +123,9 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
 
   const [viewMode, setViewMode] = useState<ViewMode>("routes");
   const [routes, setRoutes] = useState<RouteLine[]>([]);
+  const [revealedRoutes, setRevealedRoutes] = useState<RouteLine[]>([]);
   const [routesLoading, setRoutesLoading] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const routeCacheRef = useRef<Map<number, RouteLine>>(new Map());
   const activitiesRef = useRef(activities);
@@ -131,6 +135,10 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   const hasFitRoutesRef = useRef(false);
   const viewModeRef = useRef(viewMode);
   viewModeRef.current = viewMode;
+  const routesRef = useRef(routes);
+  routesRef.current = routes;
+  const revealFrameRef = useRef<number | null>(null);
+  const revealLastUpdateRef = useRef(0);
 
   const geojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = records
@@ -147,13 +155,13 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   }, [records]);
 
   const routeGeojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.LineString>>(() => {
-    const features: GeoJSON.Feature<GeoJSON.LineString>[] = routes.map((route) => ({
+    const features: GeoJSON.Feature<GeoJSON.LineString>[] = revealedRoutes.map((route) => ({
       type: "Feature",
       geometry: { type: "LineString", coordinates: route.coordinates },
       properties: { id: route.id, name: route.name, sport: route.sport, color: route.color },
     }));
     return { type: "FeatureCollection", features };
-  }, [routes]);
+  }, [revealedRoutes]);
 
   // Keep the latest data in refs so the map's one-time "load" handler (and any
   // other stale closure) always applies the current routes instead of the
@@ -163,8 +171,9 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
   const routeGeojsonRef = useRef(routeGeojson);
   routeGeojsonRef.current = routeGeojson;
 
-  // Lazily fetch the actual GPS tracks for the filtered activities. Results are
-  // cached per activity so toggling between views does not refetch.
+  // Fetch the actual GPS tracks for the filtered activities in a single bulk
+  // request. Results are cached per activity so toggling views or changing
+  // filters does not refetch tracks we already have.
   useEffect(() => {
     if (viewMode !== "routes") return;
     let cancelled = false;
@@ -174,7 +183,8 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
     const candidates = activities
       .filter((a) => typeof a.start_latitude === "number" && typeof a.start_longitude === "number")
       .slice()
-      .sort((a, b) => Date.parse(b.start_ts_utc) - Date.parse(a.start_ts_utc))
+      // Chronological order so the draw-in animation follows when runs happened.
+      .sort((a, b) => Date.parse(a.start_ts_utc) - Date.parse(b.start_ts_utc))
       .slice(0, MAX_ROUTE_ACTIVITIES);
 
     const publish = () => {
@@ -195,51 +205,132 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
 
     setRoutesLoading(true);
     void (async () => {
-      let index = 0;
-      const worker = async () => {
-        while (!cancelled && index < missing.length) {
-          const activity = missing[index++];
-          let route: RouteLine | null = null;
-          try {
-            const points = await api.getRecords(activity.id, ROUTE_RESOLUTION_MS);
-            const coordinates = points
-              .filter((p) => typeof p.latitude === "number" && typeof p.longitude === "number")
-              .map((p) => [p.longitude as number, p.latitude as number] as [number, number]);
-            route = {
+      try {
+        const fetched = await api.getOverviewRoutes(
+          missing.map((a) => a.id),
+          ROUTE_RESOLUTION_MS,
+          MAX_ROUTE_ACTIVITIES,
+        );
+        if (cancelled) return;
+        for (const route of fetched) {
+          cache.set(route.id, {
+            id: route.id,
+            name: route.name,
+            sport: route.sport,
+            start_ts_utc: route.start_ts_utc,
+            color: colorForSport(route.sport || ""),
+            coordinates: route.coordinates,
+          });
+        }
+        // Cache empty results so activities without a usable track are not
+        // requested again on the next filter change.
+        for (const activity of missing) {
+          if (!cache.has(activity.id)) {
+            cache.set(activity.id, {
               id: activity.id,
               name: activity.activity_name || activity.file_name,
               sport: activity.sport || "",
-              color: colorForSport(activity.sport || ""),
-              coordinates,
-            };
-          } catch {
-            route = null;
-          }
-          // Cache even empty results so a failed/empty activity is not retried.
-          cache.set(
-            activity.id,
-            route ?? {
-              id: activity.id,
-              name: activity.activity_name || activity.file_name,
-              sport: activity.sport || "",
+              start_ts_utc: activity.start_ts_utc,
               color: colorForSport(activity.sport || ""),
               coordinates: [],
-            },
-          );
-          publish();
+            });
+          }
         }
-      };
-
-      await Promise.all(
-        Array.from({ length: Math.min(ROUTE_FETCH_CONCURRENCY, missing.length) }, () => worker()),
-      );
-      if (!cancelled) setRoutesLoading(false);
+      } catch {
+        // Keep whatever is already cached; the map still renders partial data.
+      } finally {
+        if (!cancelled) {
+          publish();
+          setRoutesLoading(false);
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
     };
   }, [viewMode, activities]);
+
+  // Draw the routes in chronological order over a few seconds, mirroring the
+  // progressive reveal used by the individual activity GPS route card.
+  const startReveal = useCallback(() => {
+    if (revealFrameRef.current !== null) {
+      cancelAnimationFrame(revealFrameRef.current);
+      revealFrameRef.current = null;
+    }
+
+    const full = routesRef.current;
+    if (!full.length) {
+      setRevealedRoutes([]);
+      setIsRevealing(false);
+      return;
+    }
+
+    const totalPoints = full.reduce((sum, route) => sum + route.coordinates.length, 0);
+    if (totalPoints === 0) {
+      setRevealedRoutes([]);
+      setIsRevealing(false);
+      return;
+    }
+
+    setIsRevealing(true);
+    const startedAt = performance.now();
+    revealLastUpdateRef.current = 0;
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / REVEAL_DURATION_MS);
+      // Throttle React updates to ~20fps; a five-second fill does not need
+      // 60fps and this keeps the rest of the dashboard responsive.
+      if (progress < 1 && now - revealLastUpdateRef.current < 50) {
+        revealFrameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      revealLastUpdateRef.current = now;
+
+      const target = Math.floor(progress * totalPoints);
+      const revealed: RouteLine[] = [];
+      let consumed = 0;
+      for (const route of full) {
+        if (consumed >= target) break;
+        const remaining = target - consumed;
+        if (remaining >= route.coordinates.length) {
+          revealed.push(route);
+        } else if (remaining >= 2) {
+          revealed.push({ ...route, coordinates: route.coordinates.slice(0, remaining) });
+        }
+        consumed += route.coordinates.length;
+      }
+
+      setRevealedRoutes(revealed);
+
+      if (progress < 1) {
+        revealFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        revealFrameRef.current = null;
+        setRevealedRoutes(full);
+        setIsRevealing(false);
+      }
+    };
+
+    revealFrameRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // Replay the draw-in whenever the route set changes or the user switches
+  // back to the routes view.
+  useEffect(() => {
+    if (viewMode !== "routes") return;
+    if (routes.length === 0) {
+      setRevealedRoutes([]);
+      return;
+    }
+    startReveal();
+    return () => {
+      if (revealFrameRef.current !== null) {
+        cancelAnimationFrame(revealFrameRef.current);
+        revealFrameRef.current = null;
+      }
+    };
+  }, [routes, viewMode, startReveal]);
 
   function applyViewMode(map: maplibregl.Map) {
     const routesVisible = viewModeRef.current === "routes";
@@ -618,8 +709,19 @@ export function OverviewLocationMap({ records, activities, mapStyle, setMapStyle
           <span className="small map-route-status">
             {routesLoading
               ? t("map.loadingRoutes")
-              : t("map.routesLoaded", { count: routes.length })}
+              : isRevealing
+                ? t("map.drawingRoutes", { count: routes.length })
+                : t("map.routesLoaded", { count: routes.length })}
           </span>
+        )}
+        {viewMode === "routes" && (
+          <button
+            className="btn-outline-secondary"
+            onClick={startReveal}
+            disabled={routes.length === 0 || isRevealing}
+          >
+            {t("map.replay")}
+          </button>
         )}
         <button className="btn-outline-secondary" onClick={() => fitRef.current()}>
           {t("map.resetZoom")}

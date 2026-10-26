@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager, State};
 use crate::{
     auth::{create_session, hash_password, verify_password},
     fit_parser::{is_non_activity_fit_error, parse_activity_bytes},
-    models::{Activity, OverviewStats, RecordPoint, TokenResponse},
+    models::{Activity, OverviewRoute, OverviewStats, RecordPoint, TokenResponse},
     state::{AppState, StorageInfo},
 };
 
@@ -93,6 +93,7 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             get_blacklisted_hash_count,
             list_activities,
             get_overview,
+            get_overview_routes,
             get_records,
             rename_activity,
             delete_activity,
@@ -756,6 +757,28 @@ fn get_overview(state: State<'_, AppState>) -> Result<OverviewStats, String> {
         "get_overview completed"
     );
     Ok(overview)
+}
+
+#[tauri::command]
+fn get_overview_routes(
+    state: State<'_, AppState>,
+    activity_ids: Vec<i64>,
+    resolution_ms: Option<i64>,
+    limit: Option<usize>,
+) -> Result<Vec<OverviewRoute>, String> {
+    let effective_resolution = resolution_ms.unwrap_or(60_000);
+    let effective_limit = limit.unwrap_or(400).min(2_000);
+    let routes = state
+        .db
+        .overview_routes(&activity_ids, effective_resolution, effective_limit)
+        .map_err(|e| e.to_string())?;
+    tracing::debug!(
+        requested = activity_ids.len(),
+        routes = routes.len(),
+        resolution_ms = effective_resolution,
+        "get_overview_routes completed"
+    );
+    Ok(routes)
 }
 
 #[tauri::command]

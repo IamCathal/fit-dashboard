@@ -26,6 +26,13 @@ pub struct RecordsQuery {
     pub resolution_ms: Option<i64>,
 }
 
+#[derive(Deserialize)]
+pub struct OverviewRoutesPayload {
+    pub activity_ids: Vec<i64>,
+    pub resolution_ms: Option<i64>,
+    pub limit: Option<usize>,
+}
+
 /// SHA-256 hash of the valid supporter code.
 const SUPPORTER_HASH: &str =
     "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
@@ -52,6 +59,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/activities", get(list_activities))
         .route("/api/activities/{id}", patch(rename_activity).delete(delete_activity))
         .route("/api/overview", get(overview))
+        .route("/api/overview-routes", post(overview_routes))
         .route("/api/records/{id}", get(records))
         .route("/api/supporter/verify", post(verify_supporter_code))
         .route("/api/supporter/status", get(get_supporter_status).post(set_supporter_status))
@@ -345,6 +353,27 @@ async fn records(
         .records_downsampled(id, resolution)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tracing::debug!(activity_id = id, resolution_ms = resolution, count = rows.len(), "records completed");
+    Ok(Json(serde_json::json!(rows)))
+}
+
+async fn overview_routes(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<OverviewRoutesPayload>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    let resolution = payload.resolution_ms.unwrap_or(60_000);
+    let limit = payload.limit.unwrap_or(400).min(2_000);
+    let rows = state
+        .db
+        .overview_routes(&payload.activity_ids, resolution, limit)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::debug!(
+        requested = payload.activity_ids.len(),
+        routes = rows.len(),
+        resolution_ms = resolution,
+        "overview_routes completed"
+    );
     Ok(Json(serde_json::json!(rows)))
 }
 

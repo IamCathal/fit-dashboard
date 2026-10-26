@@ -3,7 +3,7 @@ use std::{path::{Path, PathBuf}, sync::Mutex};
 use anyhow::{Context, Result};
 use duckdb::{params, Connection};
 
-use crate::models::{Activity, OverviewStats, ParsedActivity, RecordPoint};
+use crate::models::{Activity, OverviewRoute, OverviewStats, ParsedActivity, RecordPoint};
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -550,6 +550,104 @@ impl Database {
             out.push(r?);
         }
         Ok(out)
+    }
+
+    /// Fetch downsampled GPS tracks for many activities in a single query.
+    ///
+    /// This replaces the previous "one request per activity" approach used by
+    /// the overview map. Results are ordered chronologically by activity start
+    /// time so the client can animate them in the order they happened.
+    pub fn overview_routes(
+        &self,
+        activity_ids: &[i64],
+        resolution_ms: i64,
+        limit: usize,
+    ) -> Result<Vec<OverviewRoute>> {
+        if activity_ids.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Activity ids originate from the database and are integers, so inlining
+        // them is safe and avoids building a dynamic parameter list.
+        let id_list = activity_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let query = format!(
+            r#"
+            WITH selected AS (
+                SELECT id, activity_name, file_name, sport, CAST(start_ts_utc AS VARCHAR) AS start_ts_utc
+                FROM activities
+                WHERE id IN ({id_list})
+                  AND start_latitude IS NOT NULL
+                  AND start_longitude IS NOT NULL
+                ORDER BY start_ts_utc ASC
+                LIMIT {limit}
+            )
+            SELECT
+                s.id,
+                s.activity_name,
+                s.file_name,
+                s.sport,
+                s.start_ts_utc,
+                MIN(r.timestamp_ms) AS timestamp_ms,
+                CAST(AVG(r.latitude) AS DOUBLE) AS latitude,
+                CAST(AVG(r.longitude) AS DOUBLE) AS longitude
+            FROM selected s
+            JOIN records r ON r.activity_id = s.id
+            WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+            GROUP BY s.id, s.activity_name, s.file_name, s.sport, s.start_ts_utc, (r.timestamp_ms / ?1)
+            ORDER BY s.start_ts_utc ASC, s.id, timestamp_ms
+            "#
+        );
+
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(&query)?;
+        let rows = stmt.query_map(params![resolution_ms.max(1000)], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<f64>>(6)?,
+                row.get::<_, Option<f64>>(7)?,
+            ))
+        })?;
+
+        let mut routes: Vec<OverviewRoute> = Vec::new();
+        for row in rows {
+            let (id, activity_name, file_name, sport, start_ts_utc, latitude, longitude) = row?;
+            let (Some(lat), Some(lon)) = (latitude, longitude) else {
+                continue;
+            };
+
+            match routes.last_mut() {
+                Some(route) if route.id == id => {
+                    route.coordinates.push([lon, lat]);
+                }
+                _ => {
+                    let name = if activity_name.trim().is_empty() {
+                        file_name
+                    } else {
+                        activity_name
+                    };
+                    routes.push(OverviewRoute {
+                        id,
+                        name,
+                        sport,
+                        start_ts_utc,
+                        coordinates: vec![[lon, lat]],
+                    });
+                }
+            }
+        }
+
+        // Drop tracks that cannot be drawn as a line.
+        routes.retain(|route| route.coordinates.len() >= 2);
+        Ok(routes)
     }
 }
 

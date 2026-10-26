@@ -31,3 +31,13 @@ export type OverviewStats = {
   total_distance_m: number;
   total_duration_s: number;
 };
+
+/** A downsampled GPS track for one activity, used by the overview map. */
+export type OverviewRoute = {
+  id: number;
+  name: string;
+  sport: string;
+  start_ts_utc: string;
+  /** `[longitude, latitude]` pairs in chronological order. */
+  coordinates: [number, number][];
+};
