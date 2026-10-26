@@ -2931,6 +2931,78 @@ body.map-fullscreen-open {
   min-height: 0;
 }
 
+/* Overview focus row — map is the hero, with compact stats + weekly trend
+   stacked alongside so both stay visible without scrolling. */
+.overview-focus-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.overview-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 0;
+}
+
+.overview-side-stack .overview-weekly-trend-panel {
+  flex: 1;
+  height: auto;
+  min-height: 220px;
+}
+
+.overview-compact-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.overview-compact-stats .stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.7rem;
+  animation: none;
+}
+
+.overview-compact-stats .stat-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.overview-compact-stats .stat-card .stat-icon {
+  margin-bottom: 0.15rem;
+  width: 26px;
+  height: 26px;
+}
+
+.overview-compact-stats .stat-card .stat-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.overview-compact-stats .stat-card .stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.9px;
+}
+
+.overview-compact-stats .stat-card .stat-value small {
+  font-size: 0.55em;
+  letter-spacing: 0;
+}
+
+.overview-compact-stats .stat-card .stat-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
 .map-footer-actions {
   display: flex;
   justify-content: flex-end;
@@ -4662,6 +4734,14 @@ body.map-fullscreen-open {
   .detail-stats-strip { gap: 0.75rem; }
   .map-header { flex-direction: column; align-items: flex-start; }
   .map-controls { width: 100%; }
+  .overview-focus-row {
+    grid-template-columns: 1fr;
+  }
+  .overview-side-stack .overview-weekly-trend-panel {
+    flex: none;
+    height: 380px;
+    min-height: 380px;
+  }
   .overview-contribution-row {
     grid-template-columns: 1fr;
   }
@@ -4871,10 +4951,10 @@ body.map-fullscreen-open {
 }
 
 .record-value {
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.4px;
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.9px;
   color: var(--text);
 }
 
