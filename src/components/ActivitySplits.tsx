@@ -24,6 +24,8 @@ type Props = {
    * "average" mark line so it matches the activity header and laps summary.
    */
   overallAvgPaceSecPerUnit?: number | null;
+  /** Render without the outer panel chrome (used inside the combined chart stack). */
+  embedded?: boolean;
 };
 
 type Split = {
@@ -204,7 +206,7 @@ function paceColor(speed: number, minSpeed: number, maxSpeed: number): string {
   return mixColor(MID_COLOR, FAST_COLOR, (t - 0.5) * 2);
 }
 
-export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvgPaceSecPerUnit }: Props) {
+export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvgPaceSecPerUnit, embedded = false }: Props) {
   const { t } = useTranslation();
   const unitMeters = distanceUnit === "mi" ? METERS_PER_MILE : METERS_PER_KILOMETER;
   const defaultSplitSize = isCyclingSport(sport) ? 5 : 1;
@@ -385,7 +387,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
   };
 
   return (
-    <div className="panel splits-panel">
+    <div className={embedded ? "splits-embedded" : "panel splits-panel"}>
       <div className="splits-header">
         <h3>{t("splits.title")}</h3>
         <div className="splits-controls">
@@ -417,7 +419,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
         option={option}
         notMerge
         onChartReady={enableChartWheelPageScroll}
-        style={{ height: 280, width: "100%", minWidth: 0 }}
+        style={{ height: 300, width: "100%", minWidth: 0 }}
       />
 
       {showTable && (

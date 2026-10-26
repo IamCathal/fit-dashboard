@@ -124,6 +124,7 @@
   "detail.pace": "Pace",
   "detail.time": "Time",
   "detail.cumulativeTime": "Cumulative Time",
+  "detail.cumulativeDistance": "Distance So Far",
   "detail.avgPace": "Avg Pace",
   "detail.totalAscent": "Total Ascent",
   "detail.totalDescent": "Total Descent",

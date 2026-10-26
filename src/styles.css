@@ -1936,10 +1936,11 @@ button:focus-visible {
 /* ── Detail Header (Individual View) ───────────────────────────────── */
 
 .detail-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.85rem 1.1rem;
   width: 100%;
   min-width: var(--content-panel-min-width);
   border-radius: 14px;
@@ -1947,6 +1948,52 @@ button:focus-visible {
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   animation: fadeSlideIn 350ms ease both;
+}
+
+/* Left: big activity name + date. */
+.detail-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.detail-activity-name {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.6px;
+  overflow-wrap: anywhere;
+}
+
+.detail-activity-date {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Right: stats bar. */
+.detail-header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+/* Chart controls live in their own compact toolbar above the chart. */
+.detail-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.detail-chart-reset-zoom {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.74rem;
 }
 
 .detail-title-row {
@@ -2436,6 +2483,134 @@ button:focus-visible {
   gap: 0.85rem;
 }
 
+/* ── Detail focus row (Individual view) ──────────────────────────────
+   Mirrors the overview: the route map is the hero, with the key stats
+   and the heart-rate/pace charts stacked alongside it. */
+.detail-focus-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr);
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.detail-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.detail-focus-row .map-panel {
+  height: auto;
+}
+
+.detail-focus-row .map-canvas-wrap {
+  flex: 1;
+  min-height: 380px;
+}
+
+.detail-focus-row .map-canvas {
+  height: 100%;
+  min-height: 380px;
+}
+
+.detail-primary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.35rem 1.6rem;
+}
+
+/* Individual-view stats are plain inline figures: no card chrome, so the
+   header stays short. */
+.detail-primary-stats .mini-stat,
+.detail-secondary-stats .mini-stat {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 0.02rem;
+}
+
+.detail-primary-stats .mini-stat .mini-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.detail-primary-stats .mini-stat .mini-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.4px;
+}
+
+.detail-primary-stats .mini-stat .mini-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.3px;
+}
+
+/* Secondary stats always show in the top bar now, just de-emphasised. */
+.detail-primary-stats .mini-stat-muted {
+  opacity: 0.62;
+}
+
+.detail-primary-stats .mini-stat-muted .mini-icon,
+.detail-primary-stats .mini-stat-muted .mini-value,
+.detail-primary-stats .mini-stat-muted .mini-label {
+  color: var(--text-muted);
+}
+
+.detail-secondary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.4rem;
+  margin-top: 0.55rem;
+}
+
+.detail-chart-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: visible;
+  /* .panel's overflow:hidden gives it a zero flex min-height, which lets the
+     main content column squash tall chart stacks and clip the splits chart. */
+  flex-shrink: 0;
+}
+
+/* Map + laps table share one row: map gets the bulk of the width. */
+.detail-map-row {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+  gap: 0.85rem;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.detail-map-row .map-canvas {
+  height: 560px;
+}
+
+.detail-map-row .laps-table-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.detail-chart-heading {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.splits-embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 /* ── Insight Grid ──────────────────────────────────────────────────── */
 
 .insight-grid {
@@ -2445,6 +2620,18 @@ button:focus-visible {
 }
 
 .insight-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.insight-pair-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.insight-pair-row > .panel:only-child {
   grid-column: 1 / -1;
 }
 
@@ -4727,7 +4914,20 @@ body.map-fullscreen-open {
   .donation-banner-text--compact {
     display: inline;
   }
+  .detail-header { grid-template-columns: 1fr; align-items: start; }
+  .detail-activity-name { font-size: 1.3rem; }
   .detail-grid { grid-template-columns: 1fr; }
+  .detail-map-row { grid-template-columns: 1fr; }
+  .detail-map-row .map-canvas { height: 380px; }
+  .detail-focus-row { grid-template-columns: 1fr; }
+  .detail-focus-row .map-canvas-wrap {
+    flex: none;
+    min-height: 0;
+  }
+  .detail-focus-row .map-canvas {
+    height: 380px;
+    min-height: 0;
+  }
   .insight-grid { grid-template-columns: 1fr; }
   .insight-pair-row { grid-template-columns: 1fr; }
   .summary-grid { grid-template-columns: 1fr; }

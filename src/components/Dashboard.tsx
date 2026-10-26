@@ -312,7 +312,6 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
-  const [showAllStats, setShowAllStats] = useState(false);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
@@ -1026,9 +1025,6 @@ export function Dashboard({ onLogout }: Props) {
       .filter((ts) => !!ts),
     [selectedMetadata]
   );
-  const deviceBadgeSerial = typeof selectedMetadata?.file_id?.serial_number === "number"
-    ? String(selectedMetadata.file_id.serial_number)
-    : "";
   // The watch reports average pace using moving/timer time, not elapsed
   // wall-clock time. `duration_s` from the activity is elapsed (includes
   // pauses), so prefer the lap timer times when available. This mirrors the
@@ -1109,6 +1105,7 @@ export function Dashboard({ onLogout }: Props) {
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
     let cumulativeSeconds = 0;
+    let cumulativeDistanceMeters = 0;
 
     return laps.map((lap, index) => {
       const lapTimeSec = typeof lap.total_timer_time_s === "number"
@@ -1116,6 +1113,7 @@ export function Dashboard({ onLogout }: Props) {
         : (typeof lap.total_elapsed_time_s === "number" ? lap.total_elapsed_time_s : null);
       if (lapTimeSec != null) cumulativeSeconds += Math.max(0, lapTimeSec);
       const distanceMeters = typeof lap.total_distance_m === "number" ? lap.total_distance_m : null;
+      if (distanceMeters != null) cumulativeDistanceMeters += distanceMeters;
       const avgPace = lap.avg_speed_m_s && lap.avg_speed_m_s > 0
         ? formatPace((distanceDivisorValue / lap.avg_speed_m_s), distanceSuffix)
         : "-";
@@ -1127,6 +1125,7 @@ export function Dashboard({ onLogout }: Props) {
         lapTimeSec,
         cumulativeSeconds,
         distanceMeters,
+        cumulativeDistanceMeters,
         avgPace,
         avgHr: lap.avg_heart_rate,
         maxHr: lap.max_heart_rate,
@@ -1143,8 +1142,8 @@ export function Dashboard({ onLogout }: Props) {
   const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
   const secondaryStats = detailStats.filter((s) => !primaryStatKeys.includes(s.key));
 
-  const renderMiniStat = (s: (typeof detailStats)[number]) => (
-    <div key={s.key} className="mini-stat">
+  const renderMiniStat = (s: (typeof detailStats)[number], variant: "primary" | "secondary" = "primary") => (
+    <div key={s.key} className={`mini-stat ${variant === "secondary" ? "mini-stat-muted" : ""}`}>
       <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
         {s.icon === "clock" && <IconClock />}
         {s.icon === "calendar" && <IconCalendar />}
@@ -1660,56 +1659,56 @@ export function Dashboard({ onLogout }: Props) {
           ) : selectedActivity ? (
             <>
               <div className="detail-header">
-                <div className="detail-title-row">
-                  <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
-                  <div className="detail-badges">
-                    <span className="badge">{formatDate(selectedActivity.start_ts_utc)}</span>
-                    {selectedActivity.sport && <span className="badge sport">{selectedActivity.sport}</span>}
-                    {deviceBadgeSerial && <span className="badge device">SN {deviceBadgeSerial}</span>}
-                    <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
-                      <input
-                        type="checkbox"
-                        checked={smoothGraphs}
-                        onChange={(e) => setSmoothGraphs(e.target.checked)}
-                      />
-                      <span>{t("detail.smoothGraphs")}</span>
-                    </label>
-                    <button className="btn-secondary" style={{ padding: "0.25rem 0.55rem", fontSize: "0.74rem" }} onClick={() => setTelemetryZoom(null)}>
-                      {t("detail.resetZoom")}
-                    </button>
+                <div className="detail-identity">
+                  <h2 className="detail-activity-name">{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                  <span className="detail-activity-date">{formatDate(selectedActivity.start_ts_utc)}</span>
+                </div>
+                <div className="detail-header-right">
+                  <div className="detail-primary-stats">
+                    {primaryStats.map((s) => renderMiniStat(s))}
+                    {secondaryStats.map((s) => renderMiniStat(s, "secondary"))}
                   </div>
                 </div>
-                <div className="detail-stats-strip primary">
-                  {primaryStats.map(renderMiniStat)}
-                </div>
-                {secondaryStats.length > 0 && (
-                  <div className="detail-stats-more">
-                    <button
-                      type="button"
-                      className={`detail-stats-toggle ${showAllStats ? "open" : ""}`}
-                      onClick={() => setShowAllStats((v) => !v)}
-                      aria-expanded={showAllStats}
-                    >
-                      <span>{showAllStats ? t("detail.showLessStats") : t("detail.showMoreStats")}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-                    {showAllStats && (
-                      <div className="detail-stats-strip secondary">
-                        {secondaryStats.map(renderMiniStat)}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-              <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} /></div>
+              <div className="panel detail-chart-panel">
+                <div className="detail-chart-toolbar">
+                  <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
+                    <input
+                      type="checkbox"
+                      checked={smoothGraphs}
+                      onChange={(e) => setSmoothGraphs(e.target.checked)}
+                    />
+                    <span>{t("detail.smoothGraphs")}</span>
+                  </label>
+                  <button className="btn-secondary detail-chart-reset-zoom" onClick={() => setTelemetryZoom(null)}>
+                    {t("detail.resetZoom")}
+                  </button>
+                </div>
+                <ActivityChart
+                  records={selectedRecords}
+                  theme={theme}
+                  distanceUnit={distanceUnit}
+                  heartRateZoneBoundsBpm={hrZoneBounds}
+                  zoomRange={telemetryZoom}
+                  onZoomChange={setTelemetryZoom}
+                  lapTimestampsUtc={lapTimestampsUtc}
+                  smoothGraphs={smoothGraphs}
+                  playbackElapsedMs={playbackElapsedMs}
+                  middleSlot={
+                    <ActivitySplits
+                      embedded
+                      records={selectedRecords}
+                      theme={theme}
+                      distanceUnit={distanceUnit}
+                      sport={selectedActivity.sport}
+                      overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
+                    />
+                  }
+                />
+              </div>
+              <div className="detail-map-row">
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
-              </div>
-              <ActivitySplits records={selectedRecords} theme={theme} distanceUnit={distanceUnit} sport={selectedActivity.sport} overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null} />
-              <ActivityInsights mode="primary" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
-              {lapRows.length > 0 && (
+                {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>
                   <div className="laps-table-wrap">
@@ -1720,12 +1719,9 @@ export function Dashboard({ onLogout }: Props) {
                           <th>{t("detail.time")}</th>
                           <th>{t("detail.cumulativeTime")}</th>
                           <th>{t("detail.distance")}</th>
+                          <th>{t("detail.cumulativeDistance")}</th>
                           <th>{t("detail.avgPace")}</th>
                           <th>{t("detail.avgHr")}</th>
-                          <th>{t("detail.maxHr")}</th>
-                          <th>{t("detail.totalAscent")}</th>
-                          <th>{t("detail.totalDescent")}</th>
-                          <th>{t("detail.avgCadence")}</th>
                           <th>{t("detail.calories")}</th>
                         </tr>
                       </thead>
@@ -1736,12 +1732,9 @@ export function Dashboard({ onLogout }: Props) {
                             <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
                             <td>{formatDuration(lap.cumulativeSeconds)}</td>
                             <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
+                            <td>{`${(lap.cumulativeDistanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`}</td>
                             <td>{lap.avgPace}</td>
                             <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
-                            <td>{typeof lap.maxHr === "number" ? Math.round(lap.maxHr) : "-"}</td>
-                            <td>{typeof lap.ascentMeters === "number" ? `${Math.round(convertElevationMeters(lap.ascentMeters, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-"}</td>
-                            <td>{typeof lap.descentMeters === "number" ? `${Math.round(convertElevationMeters(lap.descentMeters, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-"}</td>
-                            <td>{typeof lap.avgCadence === "number" ? Math.round(lap.avgCadence) : "-"}</td>
                             <td>{typeof lap.calories === "number" ? Math.round(lap.calories) : "-"}</td>
                           </tr>
                         ))}
@@ -1757,28 +1750,16 @@ export function Dashboard({ onLogout }: Props) {
                           })()}</td>
                           <td>{(() => {
                             const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
+                            return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
+                          })()}</td>
+                          <td>{(() => {
+                            const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
                             const t = lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0);
                             return d > 0 && t > 0 ? formatPace((distanceDivisorValue / (d / t)), distanceSuffix) : "-";
                           })()}</td>
                           <td>{(() => {
                             const hrs = lapRows.map(l => l.avgHr).filter((h): h is number => typeof h === "number");
                             return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const hrs = lapRows.map(l => l.maxHr).filter((h): h is number => typeof h === "number");
-                            return hrs.length > 0 ? Math.round(Math.max(...hrs)) : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const asc = lapRows.reduce((a, b) => a + (b.ascentMeters || 0), 0);
-                            return asc > 0 ? `${Math.round(convertElevationMeters(asc, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const desc = lapRows.reduce((a, b) => a + (b.descentMeters || 0), 0);
-                            return desc > 0 ? `${Math.round(convertElevationMeters(desc, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const cads = lapRows.map(l => l.avgCadence).filter((c): c is number => typeof c === "number");
-                            return cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : "-";
                           })()}</td>
                           <td>{(() => {
                             const cal = lapRows.reduce((a, b) => a + (b.calories || 0), 0);
@@ -1790,6 +1771,7 @@ export function Dashboard({ onLogout }: Props) {
                   </div>
                 </div>
               )}
+              </div>
               <div className="insight-more-toggle-row">
                 <button
                   type="button"

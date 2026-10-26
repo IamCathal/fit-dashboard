@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
@@ -19,6 +19,8 @@ type Props = {
   smoothGraphs?: boolean;
   /** When set, only data up to this elapsed time (ms) is drawn. */
   playbackElapsedMs?: number | null;
+  /** Optional content rendered between the pace and heart-rate charts. */
+  middleSlot?: ReactNode;
 };
 
 /** Slider granularity: one second expressed in minutes. */
@@ -37,6 +39,7 @@ export function ActivityChart({
   lapTimestampsUtc = [],
   smoothGraphs = true,
   playbackElapsedMs = null,
+  middleSlot,
 }: Props) {
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
@@ -467,7 +470,7 @@ export function ActivityChart({
 
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0, width: "100%", overflow: "hidden" }}>
-      <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <h4 className="detail-chart-heading">{t("chart.pace")}</h4>
       <div className="chart-series-toggles">
         <span className="chart-series-toggles-label">{t("chart.paceSeries")}</span>
         <button
@@ -487,7 +490,7 @@ export function ActivityChart({
           {t("chart.avgPace")}
         </button>
       </div>
-      <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 250, width: "100%", minWidth: 0, overflow: "hidden" }} />
       {paceDomain && (
         <div className="pace-range-control">
           <div className="pace-range-summary">
@@ -562,6 +565,9 @@ export function ActivityChart({
           )}
         </div>
       )}
+      {middleSlot}
+      <h4 className="detail-chart-heading">{t("chart.heartRate")}</h4>
+      <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
     </div>
   );
 }

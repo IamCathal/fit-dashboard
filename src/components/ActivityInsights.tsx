@@ -658,24 +658,30 @@ export function ActivityInsights({
   if (mode === "more") {
     return (
       <section className="insight-grid">
-        <article className="panel">
+        <article className="panel insight-panel-wide">
+          <h3>{tr("insights.elevation")}</h3>
+          <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+        </article>
+        <article className="panel insight-panel-wide">
           <h3>{tr("insights.speedTrend")}</h3>
           <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
-        {hasHeartRateData && (
-          <article className="panel">
-            <h3>{tr("insights.hrHistogram")}</h3>
-            <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-          </article>
-        )}
-        <article className="panel">
+        <article className="panel insight-panel-wide">
           <h3>{hasPowerData ? tr("insights.cadenceAndPower") : tr("insights.cadence")}</h3>
           <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
-        <article className="panel">
-          <h3>{tr("insights.effortHeatmap")}</h3>
-          <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
+        <div className="insight-pair-row">
+          {hasHeartRateData && (
+            <article className="panel">
+              <h3>{tr("insights.hrHistogram")}</h3>
+              <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+            </article>
+          )}
+          <article className="panel">
+            <h3>{tr("insights.effortHeatmap")}</h3>
+            <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+          </article>
+        </div>
       </section>
     );
   }
@@ -694,10 +700,6 @@ export function ActivityInsights({
           <ReactECharts option={scatterOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
-      <article className="panel insight-panel-wide">
-        <h3>{tr("insights.elevation")}</h3>
-        <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
     </section>
   );
 }
