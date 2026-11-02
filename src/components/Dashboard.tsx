@@ -35,6 +35,18 @@ import { useTranslation } from "../lib/i18n";
 
 type Props = { onLogout: () => Promise<void> };
 
+type OverviewTimeframe = "all" | "1m" | "2m" | "3m" | "6m" | "1y";
+
+const OVERVIEW_TIMEFRAMES: OverviewTimeframe[] = ["all", "1m", "2m", "3m", "6m", "1y"];
+
+const OVERVIEW_TIMEFRAME_MONTHS: Record<Exclude<OverviewTimeframe, "all">, number> = {
+  "1m": 1,
+  "2m": 2,
+  "3m": 3,
+  "6m": 6,
+  "1y": 12,
+};
+
 type VersionBadgeStatus = {
   state: "hidden" | "latest" | "update";
   latestVersion: string | null;
@@ -266,6 +278,7 @@ function IconVo2() {
 
 export function Dashboard({ onLogout }: Props) {
   const [tab, setTab] = useState<"overview" | "individual" | "compare">("overview");
+  const [overviewTimeframe, setOverviewTimeframe] = useState<OverviewTimeframe>("all");
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -441,6 +454,20 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [activities, filterSport, minDurationMinutes, maxDurationMinutes, dateFrom, dateTo, searchQuery]);
 
+  // Overview panels only show runs within the selected timeframe. The sidebar
+  // list and bulk actions keep using the full `filtered` set.
+  const overviewFiltered = useMemo(() => {
+    if (overviewTimeframe === "all") return filtered;
+    const months = OVERVIEW_TIMEFRAME_MONTHS[overviewTimeframe];
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffTs = cutoff.getTime();
+    return filtered.filter((a) => {
+      const ts = parseUtcDate(a.start_ts_utc).getTime();
+      return Number.isFinite(ts) && ts >= cutoffTs;
+    });
+  }, [filtered, overviewTimeframe]);
+
   useEffect(() => {
     const allowed = new Set(filtered.map((a) => a.id));
     setCompareIds((prev) => {
@@ -470,7 +497,7 @@ export function Dashboard({ onLogout }: Props) {
 
   const overviewRecords = useMemo(() => {
     if (tab !== "overview") return [];
-    return filtered
+    return overviewFiltered
       .filter((a) => typeof a.start_latitude === "number" && typeof a.start_longitude === "number")
       .map((a) => {
         const ts = parseUtcDate(a.start_ts_utc).getTime();
@@ -480,18 +507,18 @@ export function Dashboard({ onLogout }: Props) {
           longitude: a.start_longitude,
         } as RecordPoint;
       });
-  }, [tab, filtered]);
+  }, [tab, overviewFiltered]);
 
   const sports = Array.from(new Set(activities.map((a) => a.sport).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
   const distanceDivisorValue = distanceDivisor(distanceUnit);
   const distanceSuffix = distanceLabel(distanceUnit);
-  const filteredTotalDistanceM = filtered.reduce((sum, a) => sum + a.distance_m, 0);
-  const filteredTotalDurationS = filtered.reduce((sum, a) => sum + a.duration_s, 0);
+  const filteredTotalDistanceM = overviewFiltered.reduce((sum, a) => sum + a.distance_m, 0);
+  const filteredTotalDurationS = overviewFiltered.reduce((sum, a) => sum + a.duration_s, 0);
   const totalDistance = filteredTotalDistanceM / distanceDivisorValue;
   const totalDuration = filteredTotalDurationS;
-  const avgDistance = filtered.length ? totalDistance / filtered.length : 0;
-  const avgDuration = filtered.length ? totalDuration / filtered.length : 0;
+  const avgDistance = overviewFiltered.length ? totalDistance / overviewFiltered.length : 0;
+  const avgDuration = overviewFiltered.length ? totalDuration / overviewFiltered.length : 0;
   const recordStats = useMemo(() => computeRecordStats(records), [records]);
 
   function formatDate(input: string): string {
@@ -1609,10 +1636,26 @@ export function Dashboard({ onLogout }: Props) {
               </div>
             ) : (
             <>
+              <div className="overview-timeframe-filter">
+                <span className="overview-timeframe-label">{t("overview.timeframe")}</span>
+                <div className="overview-timeframe-options" role="group" aria-label={t("overview.timeframe")}>
+                  {OVERVIEW_TIMEFRAMES.map((tf) => (
+                    <button
+                      key={tf}
+                      type="button"
+                      className={overviewTimeframe === tf ? "active" : ""}
+                      aria-pressed={overviewTimeframe === tf}
+                      onClick={() => setOverviewTimeframe(tf)}
+                    >
+                      {t(`overview.timeframe.${tf}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="overview-focus-row">
                 <OverviewLocationMap
                   records={overviewRecords}
-                  activities={filtered}
+                  activities={overviewFiltered}
                   mapStyle={mapStyle}
                   setMapStyle={setMapStyle}
                   onSelectActivity={(activity) => {
@@ -1626,13 +1669,13 @@ export function Dashboard({ onLogout }: Props) {
                     <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.totalDuration")}</div></div>
                     <div className="stat-card"><div className="stat-icon"><IconAvg /></div><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgDistancePerActivity")}</div></div>
                   </div>
-                  <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
+                  <OverviewWeeklyTrend activities={overviewFiltered} distanceUnit={distanceUnit} theme={theme} />
                 </div>
               </div>
               <div className="overview-contribution-row">
                 <div className="overview-contribution-main">
                   <ActivityContributionHeatmap
-                    activities={filtered}
+                    activities={overviewFiltered}
                     onSelectActivity={(activity) => {
                       void selectActivity(activity);
                       setTab("individual");
@@ -1640,18 +1683,18 @@ export function Dashboard({ onLogout }: Props) {
                   />
                 </div>
                 <div className="overview-contribution-side">
-                  <OverviewTrainingPattern activities={filtered} theme={theme} />
+                  <OverviewTrainingPattern activities={overviewFiltered} theme={theme} />
                 </div>
               </div>
               <OverviewPersonalRecords
-                activities={filtered}
+                activities={overviewFiltered}
                 distanceUnit={distanceUnit}
                 onSelectActivity={(activity) => {
                   void selectActivity(activity);
                   setTab("individual");
                 }}
               />
-              <OverviewActivityTable activities={filtered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
+              <OverviewActivityTable activities={overviewFiltered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
             </>
             )
           ) : tab === "compare" ? (

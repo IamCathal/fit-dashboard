@@ -99,6 +99,13 @@
   "overview.devices": "Devices",
   "overview.showMoreStats": "Show more stats",
   "overview.showLessStats": "Show less stats",
+  "overview.timeframe": "Timeframe",
+  "overview.timeframe.all": "All",
+  "overview.timeframe.1m": "1 Month",
+  "overview.timeframe.2m": "2 Months",
+  "overview.timeframe.3m": "3 Months",
+  "overview.timeframe.6m": "6 Months",
+  "overview.timeframe.1y": "1 Year",
 
   "detail.duration": "Duration",
   "detail.distance": "Distance",

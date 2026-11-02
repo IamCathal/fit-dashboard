@@ -3118,6 +3118,56 @@ body.map-fullscreen-open {
   min-height: 0;
 }
 
+/* Overview timeframe filter — segmented control above the overview panels. */
+.overview-timeframe-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.overview-timeframe-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overview-timeframe-options {
+  display: inline-flex;
+  flex-wrap: wrap;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.overview-timeframe-options button {
+  padding: 0.35rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.overview-timeframe-options button.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.overview-timeframe-options button:not(.active):hover {
+  color: var(--text);
+  background: var(--accent-glow);
+}
+
 /* Overview focus row — map is the hero, with compact stats + weekly trend
    stacked alongside so both stay visible without scrolling. */
 .overview-focus-row {
