@@ -4,6 +4,7 @@ import type { Activity } from "../types";
 import { useTranslation } from "../lib/i18n";
 import { useSettingsStore } from "../stores/settingsStore";
 import { distanceDivisor, distanceLabel } from "../lib/units";
+import { startOfWeek, toDateKey } from "../lib/date";
 
 type Props = {
   activities: Activity[];
@@ -15,13 +16,6 @@ type AnchorState = {
   x: number;
   y: number;
 };
-
-function toDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function startOfDay(d: Date): Date {
   const copy = new Date(d);
@@ -64,8 +58,9 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
       else grouped.set(key, [a]);
     }
 
-    const gridStart = addDays(rangeStart, -rangeStart.getDay());
-    const gridEnd = addDays(today, 6 - today.getDay());
+    // Weeks run Monday -> Sunday.
+    const gridStart = startOfWeek(rangeStart);
+    const gridEnd = addDays(startOfWeek(today), 6);
 
     const days: Date[] = [];
     for (let d = new Date(gridStart); d <= gridEnd; d = addDays(d, 1)) {
@@ -175,11 +170,12 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
         <div className="overview-heatmap-grid">
           <div className="overview-heatmap-months">
             {weeks.map((week, i) => {
-              const d = week[0];
-              const showMonth = d.getDate() <= 7;
+              // Label the week that contains the 1st of a month (or the first week).
+              const firstOfMonth = week.find((day) => day.getDate() === 1);
+              const labelDate = firstOfMonth ?? (i === 0 ? week[0] : null);
               return (
                 <div key={i} className="overview-heatmap-month">
-                  {showMonth ? d.toLocaleDateString("en-US", { month: "short" }) : ""}
+                  {labelDate ? labelDate.toLocaleDateString("en-US", { month: "short" }) : ""}
                 </div>
               );
             })}
@@ -188,8 +184,12 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
           <div className="overview-heatmap-body">
             <div className="overview-heatmap-daylabels">
               <span>{t("heatmap.mon")}</span>
+              <span>{t("heatmap.tue")}</span>
               <span>{t("heatmap.wed")}</span>
+              <span>{t("heatmap.thu")}</span>
               <span>{t("heatmap.fri")}</span>
+              <span>{t("heatmap.sat")}</span>
+              <span>{t("heatmap.sun")}</span>
             </div>
             <div className="overview-heatmap-weeks">
               {weeks.map((week, wi) => (

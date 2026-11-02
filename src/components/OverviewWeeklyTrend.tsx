@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { Activity } from "../types";
 import { useTranslation } from "../lib/i18n";
+import { startOfWeek, toDateKey } from "../lib/date";
 
 type Props = {
   activities: Activity[];
@@ -13,15 +14,6 @@ type WeekBucket = {
   label: string;
   distance: number;
 };
-
-function weekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = (day + 6) % 7;
-  d.setDate(d.getDate() - diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export function OverviewWeeklyTrend({ activities, distanceUnit, theme }: Props) {
   const isDark = theme === "dark" || theme === "paper-dark";
@@ -39,8 +31,8 @@ export function OverviewWeeklyTrend({ activities, distanceUnit, theme }: Props) 
     for (const activity of activities) {
       const ts = new Date(activity.start_ts_utc);
       if (Number.isNaN(ts.getTime())) continue;
-      const wk = weekStart(ts);
-      const key = wk.toISOString();
+      const wk = startOfWeek(ts);
+      const key = toDateKey(wk);
       const existing = map.get(key) ?? { start: wk, distance: 0 };
       existing.distance += activity.distance_m / divisor;
       map.set(key, existing);

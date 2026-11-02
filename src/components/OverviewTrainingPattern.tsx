@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { Activity } from "../types";
 import { useTranslation } from "../lib/i18n";
+import { mondayIndex } from "../lib/date";
 
 type Props = {
   activities: Activity[];
@@ -56,7 +57,7 @@ export function OverviewTrainingPattern({ activities, theme }: Props) {
       const ts = new Date(activity.start_ts_utc);
       if (Number.isNaN(ts.getTime())) continue;
       // Monday = 0 ... Sunday = 6
-      const dayIndex = (ts.getDay() + 6) % 7;
+      const dayIndex = mondayIndex(ts);
       const bucket = bucketForHour(ts.getHours());
       counts[bucket][dayIndex] += 1;
     }

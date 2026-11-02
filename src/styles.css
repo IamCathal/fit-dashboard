@@ -3256,9 +3256,10 @@ body.map-fullscreen-open {
   color: var(--text-muted);
 }
 
-.overview-heatmap-daylabels span:nth-child(1) { grid-row: 2; }
-.overview-heatmap-daylabels span:nth-child(2) { grid-row: 4; }
-.overview-heatmap-daylabels span:nth-child(3) { grid-row: 6; }
+/* Seven labels (Mon-Sun) auto-place into the seven grid rows. */
+.overview-heatmap-daylabels span {
+  line-height: 1;
+}
 
 .overview-heatmap-weeks {
   flex: 1;
