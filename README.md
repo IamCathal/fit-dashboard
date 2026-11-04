@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="screenshots/overview_1.webp" alt="Overview Page" width="90%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/overview_2.webp" alt="Overview Page (continued)" width="90%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/individul_page_2.webp" alt="Individual Activity Page" width="90%" />
+</p>
+
 This is my fork and I'm customising it purely for my own use case. Most commits done with `deepseek-v4.1-flash-1017`
 
 <details>
