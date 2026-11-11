@@ -10,6 +10,7 @@ type ActivityState = {
   loading: boolean;
   filterSport: string;
   setFilterSport: (sport: string) => void;
+  setActivityOverviewVisibility: (id: number, visible: boolean) => void;
   refresh: () => Promise<void>;
   selectActivity: (activity: Activity | null) => Promise<void>;
 };
@@ -23,6 +24,17 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   filterSport: "all",
 
   setFilterSport: (sport) => set({ filterSport: sport }),
+
+  setActivityOverviewVisibility: (id, visible) =>
+    set((state) => ({
+      activities: state.activities.map((a) =>
+        a.id === id ? { ...a, show_in_overview: visible } : a,
+      ),
+      selectedActivity:
+        state.selectedActivity && state.selectedActivity.id === id
+          ? { ...state.selectedActivity, show_in_overview: visible }
+          : state.selectedActivity,
+    })),
 
   async refresh() {
     set({ loading: true });

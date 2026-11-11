@@ -33,6 +33,11 @@ pub struct OverviewRoutesPayload {
     pub limit: Option<usize>,
 }
 
+#[derive(Deserialize)]
+pub struct OverviewVisibilityPayload {
+    pub visible: bool,
+}
+
 /// SHA-256 hash of the valid supporter code.
 const SUPPORTER_HASH: &str =
     "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
@@ -58,6 +63,10 @@ pub fn app(state: AppState) -> Router {
         .route("/api/blacklist/clear", post(clear_blacklisted_hashes))
         .route("/api/activities", get(list_activities))
         .route("/api/activities/{id}", patch(rename_activity).delete(delete_activity))
+        .route(
+            "/api/activities/{id}/overview-visibility",
+            patch(set_activity_overview_visibility),
+        )
         .route("/api/overview", get(overview))
         .route("/api/overview-routes", post(overview_routes))
         .route("/api/records/{id}", get(records))
@@ -400,6 +409,26 @@ async fn rename_activity(
         return Err(StatusCode::NOT_FOUND);
     }
     tracing::info!(activity_id = id, "rename_activity completed");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn set_activity_overview_visibility(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<OverviewVisibilityPayload>,
+) -> Result<impl IntoResponse, StatusCode> {
+    ensure_session(&state, &headers)?;
+    tracing::info!(activity_id = id, visible = payload.visible, "set_activity_overview_visibility endpoint invoked");
+    let changed = state
+        .db
+        .set_activity_overview_visibility(id, payload.visible)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !changed {
+        tracing::warn!(activity_id = id, "set_activity_overview_visibility failed: not found");
+        return Err(StatusCode::NOT_FOUND);
+    }
+    tracing::info!(activity_id = id, "set_activity_overview_visibility completed");
     Ok(StatusCode::NO_CONTENT)
 }
 

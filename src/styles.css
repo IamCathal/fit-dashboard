@@ -1958,6 +1958,17 @@ button:focus-visible {
   min-width: 0;
 }
 
+.detail-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.detail-name-row .detail-activity-name {
+  min-width: 0;
+}
+
 .detail-activity-name {
   margin: 0;
   font-size: 1.55rem;
@@ -1965,6 +1976,17 @@ button:focus-visible {
   line-height: 1.12;
   letter-spacing: -0.6px;
   overflow-wrap: anywhere;
+}
+
+.detail-overview-toggle {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.detail-overview-toggle.off {
+  color: var(--text-muted);
+  opacity: 0.65;
 }
 
 .detail-activity-date {

@@ -14,6 +14,8 @@ pub struct Activity {
     pub start_latitude: Option<f64>,
     pub start_longitude: Option<f64>,
     pub metadata_json: String,
+    /// Whether this activity's route should be drawn on the overview map.
+    pub show_in_overview: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

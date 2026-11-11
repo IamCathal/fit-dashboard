@@ -175,6 +175,12 @@ const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeL
 function IconDistance() {
   return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>;
 }
+function IconMapPin() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>;
+}
+function IconMapPinOff() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 00-10.5-6.1" /><path d="M5.5 5.5A7 7 0 005 10c0 5.5 7 11 7 11" /><circle cx="12" cy="10" r="2.6" /><line x1="3" y1="3" x2="21" y2="21" /></svg>;
+}
 function IconClock() {
   return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
 }
@@ -336,7 +342,8 @@ export function Dashboard({ onLogout }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     activities, selectedActivity, records, overview,
-    filterSport, setFilterSport, selectActivity, refresh
+    filterSport, setFilterSport, selectActivity, refresh,
+    setActivityOverviewVisibility
   } = useActivityStore();
   const {
     distanceUnit, timeFormat, supporterBadge,
@@ -495,9 +502,17 @@ export function Dashboard({ onLogout }: Props) {
     return list;
   }, [filtered, sortBy, sortDirection]);
 
+  // Activities explicitly hidden from the overview map are excluded from the
+  // map's auto-zoom and route rendering, while still appearing in the other
+  // overview panels (trends, records, table, etc.).
+  const overviewMapActivities = useMemo(
+    () => overviewFiltered.filter((a) => a.show_in_overview !== false),
+    [overviewFiltered],
+  );
+
   const overviewRecords = useMemo(() => {
     if (tab !== "overview") return [];
-    return overviewFiltered
+    return overviewMapActivities
       .filter((a) => typeof a.start_latitude === "number" && typeof a.start_longitude === "number")
       .map((a) => {
         const ts = parseUtcDate(a.start_ts_utc).getTime();
@@ -507,7 +522,7 @@ export function Dashboard({ onLogout }: Props) {
           longitude: a.start_longitude,
         } as RecordPoint;
       });
-  }, [tab, overviewFiltered]);
+  }, [tab, overviewMapActivities]);
 
   const sports = Array.from(new Set(activities.map((a) => a.sport).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
@@ -929,6 +944,17 @@ export function Dashboard({ onLogout }: Props) {
     setContextMenu(null);
   }
 
+  async function toggleOverviewVisibility(activity: Activity, visible: boolean) {
+    try {
+      await api.setActivityOverviewVisibility(activity.id, visible);
+      setActivityOverviewVisibility(activity.id, visible);
+    } catch (err) {
+      setImportMessage(
+        `Failed to update overview visibility: ${err instanceof Error ? err.message : "unknown"}`
+      );
+    }
+  }
+
   async function confirmRename() {
     if (!renameTarget || !renameTarget.name.trim()) { setRenameTarget(null); return; }
     await api.renameActivity(renameTarget.id, renameTarget.name.trim());
@@ -1037,6 +1063,9 @@ export function Dashboard({ onLogout }: Props) {
   }
 
   const hasFilters = filterSport !== "all" || dateFrom || dateTo || minDurationMinutes || maxDurationMinutes || searchQuery;
+  const contextActivity = contextMenu
+    ? activities.find((a) => a.id === contextMenu.activityId) ?? null
+    : null;
   const importDisplayIndex = importProgress
     ? (importProgress.status === "processing"
         ? (importProgress.currentIndex ?? importProgress.completed)
@@ -1655,7 +1684,7 @@ export function Dashboard({ onLogout }: Props) {
               <div className="overview-focus-row">
                 <OverviewLocationMap
                   records={overviewRecords}
-                  activities={overviewFiltered}
+                  activities={overviewMapActivities}
                   mapStyle={mapStyle}
                   setMapStyle={setMapStyle}
                   onSelectActivity={(activity) => {
@@ -1703,7 +1732,19 @@ export function Dashboard({ onLogout }: Props) {
             <>
               <div className="detail-header">
                 <div className="detail-identity">
-                  <h2 className="detail-activity-name">{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                  <div className="detail-name-row">
+                    <h2 className="detail-activity-name">{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                    <button
+                      type="button"
+                      className={`icon-btn detail-overview-toggle ${selectedActivity.show_in_overview === false ? "off" : "active"}`}
+                      onClick={() => void toggleOverviewVisibility(selectedActivity, selectedActivity.show_in_overview === false)}
+                      title={selectedActivity.show_in_overview === false ? t("detail.showInOverviewTooltip") : t("detail.hideFromOverviewTooltip")}
+                      aria-label={selectedActivity.show_in_overview === false ? t("detail.showInOverview") : t("detail.hideFromOverview")}
+                      aria-pressed={selectedActivity.show_in_overview !== false}
+                    >
+                      {selectedActivity.show_in_overview === false ? <IconMapPinOff /> : <IconMapPin />}
+                    </button>
+                  </div>
                   <span className="detail-activity-date">{formatDate(selectedActivity.start_ts_utc)}</span>
                 </div>
                 <div className="detail-header-right">
@@ -1845,6 +1886,19 @@ export function Dashboard({ onLogout }: Props) {
       {contextMenu && (
         <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
           <button onClick={onRenameClick}><IconEdit /> {t("contextMenu.rename")}</button>
+          {contextActivity && (
+            <button
+              onClick={() => {
+                void toggleOverviewVisibility(contextActivity, contextActivity.show_in_overview === false);
+                setContextMenu(null);
+              }}
+            >
+              <IconDistance />
+              {contextActivity.show_in_overview === false
+                ? t("contextMenu.showInOverview")
+                : t("contextMenu.hideFromOverview")}
+            </button>
+          )}
           <button className="ctx-danger" onClick={onDeleteClick}><IconTrash /> {t("contextMenu.delete")}</button>
           <div className="ctx-divider" />
           <div className="ctx-export-parent" onMouseEnter={() => setContextExportOpen(true)} onMouseLeave={() => setContextExportOpen(false)}>

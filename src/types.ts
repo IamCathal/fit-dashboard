@@ -11,6 +11,8 @@ export type Activity = {
   start_latitude?: number;
   start_longitude?: number;
   metadata_json?: string;
+  /** Whether this activity's route is drawn on the overview map. */
+  show_in_overview?: boolean;
 };
 
 export type RecordPoint = {

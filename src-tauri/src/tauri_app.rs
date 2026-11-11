@@ -96,6 +96,7 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             get_overview_routes,
             get_records,
             rename_activity,
+            set_activity_overview_visibility,
             delete_activity,
             verify_supporter_code,
             get_supporter_status,
@@ -818,6 +819,25 @@ fn rename_activity(state: State<'_, AppState>, activity_id: i64, name: String) -
         return Err("activity not found".to_string());
     }
     tracing::info!(activity_id, "rename_activity completed");
+    Ok(())
+}
+
+#[tauri::command]
+fn set_activity_overview_visibility(
+    state: State<'_, AppState>,
+    activity_id: i64,
+    visible: bool,
+) -> Result<(), String> {
+    tracing::info!(activity_id, visible, "set_activity_overview_visibility command invoked");
+    let changed = state
+        .db
+        .set_activity_overview_visibility(activity_id, visible)
+        .map_err(|e| e.to_string())?;
+    if !changed {
+        tracing::warn!(activity_id, "set_activity_overview_visibility failed: activity not found");
+        return Err("activity not found".to_string());
+    }
+    tracing::info!(activity_id, "set_activity_overview_visibility completed");
     Ok(())
 }
 

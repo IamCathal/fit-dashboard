@@ -113,7 +113,8 @@ impl Database {
                 start_longitude DOUBLE,
                 source VARCHAR,
                 imported_at TIMESTAMP DEFAULT now(),
-                metadata_json VARCHAR
+                metadata_json VARCHAR,
+                show_in_overview BOOLEAN DEFAULT TRUE
             );
 
             CREATE TABLE IF NOT EXISTS records (
@@ -150,6 +151,10 @@ impl Database {
 
                 conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_latitude DOUBLE", [])?;
                 conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_longitude DOUBLE", [])?;
+                conn.execute(
+                    "ALTER TABLE activities ADD COLUMN IF NOT EXISTS show_in_overview BOOLEAN DEFAULT TRUE",
+                    [],
+                )?;
                 conn.execute(
                         r#"
                         UPDATE activities
@@ -211,7 +216,8 @@ impl Database {
                     distance_m REAL,
                     source VARCHAR,
                     imported_at TIMESTAMP DEFAULT now(),
-                    metadata_json VARCHAR
+                    metadata_json VARCHAR,
+                    show_in_overview BOOLEAN DEFAULT TRUE
                 );
 
                 INSERT INTO activities_migrated (
@@ -442,7 +448,7 @@ impl Database {
     pub fn list_activities(&self) -> Result<Vec<Activity>> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, file_name, activity_name, COALESCE(sport,''), COALESCE(device,''), CAST(start_ts_utc AS VARCHAR), CAST(end_ts_utc AS VARCHAR), CAST(COALESCE(duration_s,0) AS DOUBLE), CAST(COALESCE(distance_m,0) AS DOUBLE), CAST(start_latitude AS DOUBLE), CAST(start_longitude AS DOUBLE), COALESCE(metadata_json,'')
+            "SELECT id, file_name, activity_name, COALESCE(sport,''), COALESCE(device,''), CAST(start_ts_utc AS VARCHAR), CAST(end_ts_utc AS VARCHAR), CAST(COALESCE(duration_s,0) AS DOUBLE), CAST(COALESCE(distance_m,0) AS DOUBLE), CAST(start_latitude AS DOUBLE), CAST(start_longitude AS DOUBLE), COALESCE(metadata_json,''), COALESCE(show_in_overview, TRUE)
              FROM activities ORDER BY start_ts_utc DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -459,6 +465,7 @@ impl Database {
                 start_latitude: row.get(9)?,
                 start_longitude: row.get(10)?,
                 metadata_json: row.get(11)?,
+                show_in_overview: row.get(12)?,
             })
         })?;
 
@@ -467,6 +474,18 @@ impl Database {
             out.push(item?);
         }
         Ok(out)
+    }
+
+    pub fn set_activity_overview_visibility(&self, activity_id: i64, visible: bool) -> Result<bool> {
+        let changed = {
+            let conn = self.conn.lock().expect("db mutex poisoned");
+            conn.execute(
+                "UPDATE activities SET show_in_overview = ?1 WHERE id = ?2",
+                params![visible, activity_id],
+            )?
+        };
+        self.checkpoint_if_wal_exceeds_limit()?;
+        Ok(changed > 0)
     }
 
     pub fn rename_activity(&self, activity_id: i64, name: &str) -> Result<bool> {

@@ -137,6 +137,10 @@
   "detail.totalDescent": "Total Descent",
   "detail.summary": "Summary",
   "detail.smoothGraphsTooltip": "Use dynamic rolling average smoothing. As you zoom in, more detailed points are used.",
+  "detail.showInOverview": "Show in overview map",
+  "detail.showInOverviewTooltip": "Include this activity's route in the overview map. Turn off to keep it out of the map's auto-zoom.",
+  "detail.hideFromOverview": "Hide from overview map",
+  "detail.hideFromOverviewTooltip": "This activity is hidden from the overview map. Click to include it again.",
 
   "laps.title": "Laps",
   "laps.header": "Laps",
@@ -153,6 +157,8 @@
   "laps.summary": "Summary",
 
   "contextMenu.rename": "Rename",
+  "contextMenu.showInOverview": "Show in overview map",
+  "contextMenu.hideFromOverview": "Hide from overview map",
   "contextMenu.delete": "Delete",
   "contextMenu.export": "Export",
 

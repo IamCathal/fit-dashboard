@@ -246,6 +246,13 @@ export const api = {
     await webClient.patch(`/activities/${activityId}`, { name });
   },
 
+  async setActivityOverviewVisibility(activityId: number, visible: boolean) {
+    if (isTauriRuntime()) {
+      return invoke("set_activity_overview_visibility", { activityId, visible });
+    }
+    await webClient.patch(`/activities/${activityId}/overview-visibility`, { visible });
+  },
+
   async deleteActivity(activityId: number) {
     if (isTauriRuntime()) {
       return invoke("delete_activity", { activityId });
