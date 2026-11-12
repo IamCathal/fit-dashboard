@@ -15,7 +15,6 @@ type Props = {
   mapStyle: MapStyle;
   setMapStyle: (style: MapStyle) => void;
   onSelectActivity?: (activity: Activity) => void;
-  focusWeekStart?: string | null;
 };
 
 type BaseMapInfo = { label: string; tileUrl: string; attribution: string };
@@ -229,7 +228,7 @@ function formatVisitDate(ts: number): string {
   });
 }
 
-export function OverviewLocationMap({ records, activities, fitActivities, mapStyle, setMapStyle, onSelectActivity, focusWeekStart }: Props) {
+export function OverviewLocationMap({ records, activities, fitActivities, mapStyle, setMapStyle, onSelectActivity }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const theme = useSettingsStore((s) => s.theme);
@@ -975,55 +974,6 @@ export function OverviewLocationMap({ records, activities, fitActivities, mapSty
   useEffect(() => {
     if (viewMode !== "density" && routes.length > 0) fitRef.current();
   }, [viewMode]);
-
-  // When a week is selected in the weekly trend, zoom the map to that week's
-  // runs. Clearing the selection restores the whole-period fit.
-  const previousFocusWeekRef = useRef<string | null>(null);
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const previous = previousFocusWeekRef.current;
-    previousFocusWeekRef.current = focusWeekStart ?? null;
-
-    if (!focusWeekStart) {
-      if (previous) fitRef.current();
-      return;
-    }
-
-    const start = new Date(`${focusWeekStart}T00:00:00`).getTime();
-    if (!Number.isFinite(start)) return;
-    const end = start + 7 * 86400000;
-
-    const coords: [number, number][] = [];
-    for (const route of routes) {
-      const ts = Date.parse(route.start_ts_utc);
-      if (Number.isFinite(ts) && ts >= start && ts < end) {
-        coords.push(...route.coordinates);
-      }
-    }
-
-    if (coords.length === 0) {
-      for (const activity of activities) {
-        const ts = Date.parse(activity.start_ts_utc);
-        if (
-          Number.isFinite(ts) &&
-          ts >= start &&
-          ts < end &&
-          typeof activity.start_latitude === "number" &&
-          typeof activity.start_longitude === "number"
-        ) {
-          coords.push([activity.start_longitude, activity.start_latitude] as [number, number]);
-        }
-      }
-    }
-
-    if (coords.length === 0) return;
-    const bounds = coords.reduce(
-      (b, coord) => b.extend(coord),
-      new maplibregl.LngLatBounds(coords[0], coords[0]),
-    );
-    map.fitBounds(bounds, { padding: 64, maxZoom: 14, duration: 650 });
-  }, [focusWeekStart, routes, activities]);
 
   // The footer content changes between view modes, which can slightly change
   // the map's available height. Resize after the layout settles.

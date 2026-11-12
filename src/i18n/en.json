@@ -354,10 +354,10 @@
   "trend.total": "Total",
   "trend.longestRun": "Longest run",
   "trend.otherRuns": "Other runs",
-  "trend.showWholePeriod": "Show whole period",
+  "trend.showWholePeriod": "Clear selection",
 
   "weekSummary.title": "Selected week",
-  "weekSummary.showWholePeriod": "Show whole period",
+  "weekSummary.showWholePeriod": "Clear week selection",
   "weekSummary.runs": "Runs",
   "weekSummary.noRuns": "No runs this week",
 

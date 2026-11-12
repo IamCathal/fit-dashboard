@@ -542,6 +542,29 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [overviewFiltered, selectedWeekStart]);
 
+  // When a week is selected, the shared map should render only that week's
+  // runs (routes, density points, coverage and auto-zoom all follow suit).
+  const overviewMapScope = selectedWeekStart ? selectedWeekActivities : overviewFiltered;
+  const overviewMapFitScope = useMemo(
+    () =>
+      (selectedWeekStart ? selectedWeekActivities : overviewMapActivities).filter(
+        (a) => a.show_in_overview !== false,
+      ),
+    [selectedWeekStart, selectedWeekActivities, overviewMapActivities],
+  );
+  const overviewMapRecords = useMemo(() => {
+    if (!selectedWeekStart) return overviewRecords;
+    const start = new Date(`${selectedWeekStart}T00:00:00`).getTime();
+    if (!Number.isFinite(start)) return overviewRecords;
+    const end = start + 7 * 86400000;
+    return overviewRecords.filter(
+      (record) =>
+        Number.isFinite(record.timestamp_ms) &&
+        record.timestamp_ms >= start &&
+        record.timestamp_ms < end,
+    );
+  }, [overviewRecords, selectedWeekStart]);
+
   const sports = Array.from(new Set(activities.map((a) => a.sport).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
   const distanceDivisorValue = distanceDivisor(distanceUnit);
@@ -1701,12 +1724,11 @@ export function Dashboard({ onLogout }: Props) {
               </div>
               <div className="overview-focus-row">
                 <OverviewLocationMap
-                  records={overviewRecords}
-                  activities={overviewFiltered}
-                  fitActivities={overviewMapActivities}
+                  records={overviewMapRecords}
+                  activities={overviewMapScope}
+                  fitActivities={overviewMapFitScope}
                   mapStyle={mapStyle}
                   setMapStyle={setMapStyle}
-                  focusWeekStart={selectedWeekStart}
                   onSelectActivity={(activity) => {
                     void selectActivity(activity);
                     setTab("individual");
