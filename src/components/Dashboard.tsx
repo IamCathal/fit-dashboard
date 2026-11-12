@@ -12,6 +12,7 @@ import { OverviewTrainingPattern } from "./OverviewTrainingPattern";
 import { OverviewWeeklyTrend } from "./OverviewWeeklyTrend";
 import { OverviewPersonalRecords } from "./OverviewPersonalRecords";
 import { OverviewActivityTable } from "./OverviewActivityTable";
+import { OverviewWeekSummary } from "./OverviewWeekSummary";
 import { DatePickerPopover } from "./DatePickerPopover";
 import { DateRange } from "react-day-picker";
 import { DonationBanner } from "./DonationBanner";
@@ -285,6 +286,7 @@ function IconVo2() {
 export function Dashboard({ onLogout }: Props) {
   const [tab, setTab] = useState<"overview" | "individual" | "compare">("overview");
   const [overviewTimeframe, setOverviewTimeframe] = useState<OverviewTimeframe>("all");
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(null);
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -475,6 +477,11 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [filtered, overviewTimeframe]);
 
+  // A week selection only makes sense within the current timeframe.
+  useEffect(() => {
+    setSelectedWeekStart(null);
+  }, [overviewTimeframe]);
+
   useEffect(() => {
     const allowed = new Set(filtered.map((a) => a.id));
     setCompareIds((prev) => {
@@ -503,8 +510,8 @@ export function Dashboard({ onLogout }: Props) {
   }, [filtered, sortBy, sortDirection]);
 
   // Activities explicitly hidden from the overview map are excluded from the
-  // map's auto-zoom and route rendering, while still appearing in the other
-  // overview panels (trends, records, table, etc.).
+  // map's default auto-zoom only. They are still rendered as routes/points so
+  // navigating to their location reveals them.
   const overviewMapActivities = useMemo(
     () => overviewFiltered.filter((a) => a.show_in_overview !== false),
     [overviewFiltered],
@@ -512,7 +519,7 @@ export function Dashboard({ onLogout }: Props) {
 
   const overviewRecords = useMemo(() => {
     if (tab !== "overview") return [];
-    return overviewMapActivities
+    return overviewFiltered
       .filter((a) => typeof a.start_latitude === "number" && typeof a.start_longitude === "number")
       .map((a) => {
         const ts = parseUtcDate(a.start_ts_utc).getTime();
@@ -522,7 +529,18 @@ export function Dashboard({ onLogout }: Props) {
           longitude: a.start_longitude,
         } as RecordPoint;
       });
-  }, [tab, overviewMapActivities]);
+  }, [tab, overviewFiltered]);
+
+  const selectedWeekActivities = useMemo(() => {
+    if (!selectedWeekStart) return [] as Activity[];
+    const start = new Date(`${selectedWeekStart}T00:00:00`).getTime();
+    if (!Number.isFinite(start)) return [] as Activity[];
+    const end = start + 7 * 86400000;
+    return overviewFiltered.filter((a) => {
+      const ts = parseUtcDate(a.start_ts_utc).getTime();
+      return Number.isFinite(ts) && ts >= start && ts < end;
+    });
+  }, [overviewFiltered, selectedWeekStart]);
 
   const sports = Array.from(new Set(activities.map((a) => a.sport).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
@@ -1684,9 +1702,11 @@ export function Dashboard({ onLogout }: Props) {
               <div className="overview-focus-row">
                 <OverviewLocationMap
                   records={overviewRecords}
-                  activities={overviewMapActivities}
+                  activities={overviewFiltered}
+                  fitActivities={overviewMapActivities}
                   mapStyle={mapStyle}
                   setMapStyle={setMapStyle}
+                  focusWeekStart={selectedWeekStart}
                   onSelectActivity={(activity) => {
                     void selectActivity(activity);
                     setTab("individual");
@@ -1698,13 +1718,32 @@ export function Dashboard({ onLogout }: Props) {
                     <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.totalDuration")}</div></div>
                     <div className="stat-card"><div className="stat-icon"><IconAvg /></div><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgDistancePerActivity")}</div></div>
                   </div>
-                  <OverviewWeeklyTrend activities={overviewFiltered} distanceUnit={distanceUnit} theme={theme} />
+                  <OverviewWeeklyTrend
+                    activities={overviewFiltered}
+                    distanceUnit={distanceUnit}
+                    theme={theme}
+                    selectedWeekStart={selectedWeekStart}
+                    onSelectWeek={(weekStart) => setSelectedWeekStart(weekStart)}
+                  />
                 </div>
               </div>
+              {selectedWeekStart && (
+                <OverviewWeekSummary
+                  weekStart={selectedWeekStart}
+                  activities={selectedWeekActivities}
+                  distanceUnit={distanceUnit}
+                  onSelectActivity={(activity) => {
+                    void selectActivity(activity);
+                    setTab("individual");
+                  }}
+                  onClear={() => setSelectedWeekStart(null)}
+                />
+              )}
               <div className="overview-contribution-row">
                 <div className="overview-contribution-main">
                   <ActivityContributionHeatmap
                     activities={overviewFiltered}
+                    highlightedWeekStart={selectedWeekStart}
                     onSelectActivity={(activity) => {
                       void selectActivity(activity);
                       setTab("individual");

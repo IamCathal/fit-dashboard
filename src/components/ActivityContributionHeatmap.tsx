@@ -9,6 +9,7 @@ import { startOfWeek, toDateKey } from "../lib/date";
 type Props = {
   activities: Activity[];
   onSelectActivity?: (activity: Activity) => void;
+  highlightedWeekStart?: string | null;
 };
 
 type AnchorState = {
@@ -38,7 +39,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function ActivityContributionHeatmap({ activities, onSelectActivity }: Props) {
+export function ActivityContributionHeatmap({ activities, onSelectActivity, highlightedWeekStart }: Props) {
   const { t, language } = useTranslation();
   const distanceUnit = useSettingsStore((s) => s.distanceUnit);
   const [hover, setHover] = useState<AnchorState | null>(null);
@@ -192,7 +193,10 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
               <span>{t("heatmap.sun")}</span>
             </div>
             <div className="overview-heatmap-weeks">
-              {weeks.map((week, wi) => (
+              {weeks.map((week, wi) => {
+                const weekKey = toDateKey(week[0]);
+                const isHighlightedWeek = highlightedWeekStart === weekKey;
+                return (
                 <div key={wi} className="overview-heatmap-week">
                   {week.map((d) => {
                     const key = toDateKey(d);
@@ -202,7 +206,7 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
                     return (
                       <div
                         key={key}
-                        className={`overview-heatmap-cell${isActive ? " is-hovered" : ""}${isPinned ? " is-pinned" : ""}`}
+                        className={`overview-heatmap-cell${isActive ? " is-hovered" : ""}${isPinned ? " is-pinned" : ""}${isHighlightedWeek ? " is-week-highlighted" : ""}`}
                         aria-label={`${d.toDateString()} - ${count} ${count === 1 ? t("heatmap.activity") : t("heatmap.activities")}`}
                         style={{ backgroundColor: cellColor(count) }}
                         onMouseEnter={(e) => {
@@ -215,7 +219,8 @@ export function ActivityContributionHeatmap({ activities, onSelectActivity }: Pr
                     );
                   })}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

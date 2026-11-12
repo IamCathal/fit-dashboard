@@ -3315,6 +3315,122 @@ body.map-fullscreen-open {
   min-height: 0;
 }
 
+.overview-weekly-trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.overview-weekly-trend-head h3 {
+  margin: 0;
+}
+
+.overview-week-clear {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.overview-week-clear:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Compact summary shown when a week is selected in the weekly trend. */
+.overview-week-summary {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  /* The overview tab is a flex column; keep the summary at its natural
+     height so its contents are not squeezed and clipped. */
+  flex-shrink: 0;
+  min-height: fit-content;
+}
+
+.overview-week-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.overview-week-summary-head h3 {
+  margin: 0 0 0.15rem;
+}
+
+.overview-week-summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.overview-week-summary-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.overview-week-summary-stats span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.overview-week-summary-stats strong {
+  font-size: 0.95rem;
+}
+
+.overview-week-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.overview-week-run {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.overview-week-run:hover {
+  border-color: var(--accent);
+}
+
+.overview-week-run:disabled {
+  cursor: default;
+}
+
+.overview-week-run-date {
+  color: var(--text-muted);
+}
+
+.overview-week-run-name {
+  font-weight: 600;
+}
+
+.overview-week-run-meta {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Overview timeframe filter — segmented control above the overview panels. */
 .overview-timeframe-filter {
   display: flex;
@@ -3549,6 +3665,11 @@ body.map-fullscreen-open {
 
 .overview-heatmap-weeks .overview-heatmap-cell.is-pinned {
   box-shadow: 0 0 0 2px var(--accent), 0 0 8px rgba(34, 211, 238, 0.65);
+}
+
+.overview-heatmap-weeks .overview-heatmap-cell.is-week-highlighted {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .overview-heatmap-tooltip {

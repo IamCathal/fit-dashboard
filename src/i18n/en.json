@@ -350,6 +350,16 @@
   "trend.weeklyTrainingTrend": "Weekly Training Trend",
   "trend.distance": "Distance",
   "trend.duration": "Duration",
+  "trend.noRuns": "No runs this week",
+  "trend.total": "Total",
+  "trend.longestRun": "Longest run",
+  "trend.otherRuns": "Other runs",
+  "trend.showWholePeriod": "Show whole period",
+
+  "weekSummary.title": "Selected week",
+  "weekSummary.showWholePeriod": "Show whole period",
+  "weekSummary.runs": "Runs",
+  "weekSummary.noRuns": "No runs this week",
 
   "records.title": "Personal Records",
   "records.hint": "Fastest efforts from your filtered runs",
