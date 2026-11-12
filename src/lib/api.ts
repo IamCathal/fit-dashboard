@@ -1,6 +1,6 @@
 import axios from "axios";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Activity, OverviewRoute, OverviewStats, RecordPoint } from "../types";
+import type { Activity, GeocodeResult, OverviewRoute, OverviewStats, RecordPoint } from "../types";
 
 type StorageInfo = {
   data_dir: string;
@@ -237,6 +237,15 @@ export const api = {
       limit,
     });
     return res.data;
+  },
+
+  /** Resolve an approximate place name for a coordinate. */
+  async reverseGeocode(lat: number, lon: number): Promise<GeocodeResult | null> {
+    if (isTauriRuntime()) {
+      return invoke<GeocodeResult | null>("reverse_geocode", { lat, lon });
+    }
+    const res = await webClient.get("/reverse-geocode", { params: { lat, lon } });
+    return res.data ?? null;
   },
 
   async renameActivity(activityId: number, name: string) {

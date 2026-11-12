@@ -68,6 +68,15 @@ pub struct OverviewRoute {
     pub coordinates: Vec<[f64; 2]>,
 }
 
+/// Approximate place name for a coordinate, used by the coverage panel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeocodeResult {
+    pub name: String,
+    pub admin1: String,
+    pub admin2: String,
+    pub country: String,
+}
+
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 #[derive(Debug, Deserialize)]
 pub struct Credentials {

@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager, State};
 use crate::{
     auth::{create_session, hash_password, verify_password},
     fit_parser::{is_non_activity_fit_error, parse_activity_bytes},
-    models::{Activity, OverviewRoute, OverviewStats, RecordPoint, TokenResponse},
+    models::{Activity, GeocodeResult, OverviewRoute, OverviewStats, RecordPoint, TokenResponse},
     state::{AppState, StorageInfo},
 };
 
@@ -94,6 +94,7 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             list_activities,
             get_overview,
             get_overview_routes,
+            reverse_geocode,
             get_records,
             rename_activity,
             set_activity_overview_visibility,
@@ -780,6 +781,13 @@ fn get_overview_routes(
         "get_overview_routes completed"
     );
     Ok(routes)
+}
+
+#[tauri::command]
+async fn reverse_geocode(lat: f64, lon: f64) -> Result<Option<GeocodeResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::geocode::reverse_geocode(lat, lon))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

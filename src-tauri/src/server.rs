@@ -34,6 +34,12 @@ pub struct OverviewRoutesPayload {
 }
 
 #[derive(Deserialize)]
+pub struct ReverseGeocodeQuery {
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Deserialize)]
 pub struct OverviewVisibilityPayload {
     pub visible: bool,
 }
@@ -69,6 +75,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/api/overview", get(overview))
         .route("/api/overview-routes", post(overview_routes))
+        .route("/api/reverse-geocode", get(reverse_geocode))
         .route("/api/records/{id}", get(records))
         .route("/api/supporter/verify", post(verify_supporter_code))
         .route("/api/supporter/status", get(get_supporter_status).post(set_supporter_status))
@@ -384,6 +391,20 @@ async fn overview_routes(
         "overview_routes completed"
     );
     Ok(Json(serde_json::json!(rows)))
+}
+
+async fn reverse_geocode(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<ReverseGeocodeQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    let result = tokio::task::spawn_blocking(move || {
+        crate::geocode::reverse_geocode(q.lat, q.lon)
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!(result)))
 }
 
 async fn rename_activity(

@@ -3,6 +3,7 @@
 mod auth;
 mod database;
 mod fit_parser;
+mod geocode;
 mod models;
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 mod server;

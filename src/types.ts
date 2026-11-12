@@ -43,3 +43,11 @@ export type OverviewRoute = {
   /** `[longitude, latitude]` pairs in chronological order. */
   coordinates: [number, number][];
 };
+
+/** Approximate place name for a coordinate, used by the coverage panel. */
+export type GeocodeResult = {
+  name: string;
+  admin1: string;
+  admin2: string;
+  country: string;
+};
