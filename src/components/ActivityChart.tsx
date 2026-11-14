@@ -696,6 +696,24 @@ export function ActivityChart({
                 {Math.round(hrDomain.low)} – {Math.round(hrDomain.high)} bpm
               </span>
             </div>
+            <div className="pace-range-quick-actions">
+              <button
+                type="button"
+                className="btn-secondary pace-range-quick"
+                onClick={() => setHrWindow({ low: hrDomain.min, high: hrDomain.max })}
+                disabled={hrDomain.isFullRange}
+              >
+                {t("chart.hrRangeShowAll")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary pace-range-quick"
+                onClick={() => setHrWindow(null)}
+                disabled={hrDomain.usingDefault}
+              >
+                {t("chart.hrRangeShowZoomed")}
+              </button>
+            </div>
             <button
               type="button"
               className="btn-secondary pace-range-toggle"
@@ -733,22 +751,13 @@ export function ActivityChart({
               </div>
               <div className="pace-range-panel-footer">
                 <span className="pace-range-hint">{t("chart.hrRangeHint")}</span>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    className="btn-secondary pace-range-reset"
-                    onClick={() => setHrWindow({ low: hrDomain.min, high: hrDomain.max })}
-                    disabled={hrDomain.isFullRange}
-                  >
-                    {t("chart.hrRangeEntire")}
-                  </button>
-                  <button
-                    className="btn-secondary pace-range-reset"
-                    onClick={() => setHrWindow(null)}
-                    disabled={hrDomain.usingDefault}
-                  >
-                    {t("chart.paceRangeReset")}
-                  </button>
-                </div>
+                <button
+                  className="btn-secondary pace-range-reset"
+                  onClick={() => setHrWindow(null)}
+                  disabled={hrDomain.usingDefault}
+                >
+                  {t("chart.paceRangeReset")}
+                </button>
               </div>
             </div>
           )}
