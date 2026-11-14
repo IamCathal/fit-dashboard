@@ -5,7 +5,7 @@ import { ActivityChart } from "./ActivityChart";
 import { ActivitySplits } from "./ActivitySplits";
 import { ActivityMap } from "./ActivityMap";
 import { CompareCharts } from "./CompareCharts";
-import { ActivityInsights, isRunSport } from "./ActivityInsights";
+import { ActivityInsights } from "./ActivityInsights";
 import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
 import { OverviewLocationMap } from "./OverviewLocationMap";
 import { OverviewTrainingPattern } from "./OverviewTrainingPattern";
@@ -332,7 +332,9 @@ export function Dashboard({ onLogout }: Props) {
   } | null>(null);
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
+  const [selectedSplitRange, setSelectedSplitRange] = useState<{ startM: number; endM: number } | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
+  const [showLaps, setShowLaps] = useState(true);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
@@ -354,15 +356,11 @@ export function Dashboard({ onLogout }: Props) {
   } = useSettingsStore();
   const { t } = useTranslation();
 
-  // Runs hide the secondary insight charts by default; other sports show them.
-  useEffect(() => {
-    setShowMoreInsights(!isRunSport(selectedActivity?.sport));
-  }, [selectedActivity?.id, selectedActivity?.sport]);
-
   // Reset the shared playhead when a different activity is selected. The map
   // reports its position again once the new records are loaded.
   useEffect(() => {
     setPlaybackElapsedMs(null);
+    setSelectedSplitRange(null);
   }, [selectedActivity?.id]);
 
   useEffect(() => {
@@ -1805,8 +1803,8 @@ export function Dashboard({ onLogout }: Props) {
                     >
                       {selectedActivity.show_in_overview === false ? <IconMapPinOff /> : <IconMapPin />}
                     </button>
+                    <span className="detail-activity-date">{formatDate(selectedActivity.start_ts_utc)}</span>
                   </div>
-                  <span className="detail-activity-date">{formatDate(selectedActivity.start_ts_utc)}</span>
                 </div>
                 <div className="detail-header-right">
                   <div className="detail-primary-stats">
@@ -1815,108 +1813,105 @@ export function Dashboard({ onLogout }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="panel detail-chart-panel">
-                <div className="detail-chart-toolbar">
-                  <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
-                    <input
-                      type="checkbox"
-                      checked={smoothGraphs}
-                      onChange={(e) => setSmoothGraphs(e.target.checked)}
-                    />
-                    <span>{t("detail.smoothGraphs")}</span>
-                  </label>
-                  <button className="btn-secondary detail-chart-reset-zoom" onClick={() => setTelemetryZoom(null)}>
-                    {t("detail.resetZoom")}
-                  </button>
-                </div>
-                <ActivityChart
-                  records={selectedRecords}
-                  theme={theme}
-                  distanceUnit={distanceUnit}
-                  heartRateZoneBoundsBpm={hrZoneBounds}
-                  zoomRange={telemetryZoom}
-                  onZoomChange={setTelemetryZoom}
-                  lapTimestampsUtc={lapTimestampsUtc}
-                  smoothGraphs={smoothGraphs}
-                  playbackElapsedMs={playbackElapsedMs}
-                  middleSlot={
-                    <ActivitySplits
-                      embedded
-                      records={selectedRecords}
-                      theme={theme}
-                      distanceUnit={distanceUnit}
-                      sport={selectedActivity.sport}
-                      overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
-                    />
-                  }
-                />
-              </div>
-              <div className="detail-map-row">
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} />
-                {lapRows.length > 0 && (
-                <div className="panel laps-table-panel">
-                  <h3>{t("detail.laps")}</h3>
-                  <div className="laps-table-wrap">
-                    <table className="laps-table">
-                      <thead>
-                        <tr>
-                          <th>{t("detail.laps")}</th>
-                          <th>{t("detail.time")}</th>
-                          <th>{t("detail.cumulativeTime")}</th>
-                          <th>{t("detail.distance")}</th>
-                          <th>{t("detail.cumulativeDistance")}</th>
-                          <th>{t("detail.avgPace")}</th>
-                          <th>{t("detail.avgHr")}</th>
-                          <th>{t("detail.calories")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lapRows.map((lap) => (
-                          <tr key={`lap-${lap.index}`}>
-                            <td>{lap.index}</td>
-                            <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
-                            <td>{formatDuration(lap.cumulativeSeconds)}</td>
-                            <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
-                            <td>{`${(lap.cumulativeDistanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`}</td>
-                            <td>{lap.avgPace}</td>
-                            <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
-                            <td>{typeof lap.calories === "number" ? Math.round(lap.calories) : "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <td>{t("detail.summary")}</td>
-                          <td>{formatDuration(lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0))}</td>
-                          <td>-</td>
-                          <td>{(() => {
-                            const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
-                            return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
-                            return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
-                            const t = lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0);
-                            return d > 0 && t > 0 ? formatPace((distanceDivisorValue / (d / t)), distanceSuffix) : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const hrs = lapRows.map(l => l.avgHr).filter((h): h is number => typeof h === "number");
-                            return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : "-";
-                          })()}</td>
-                          <td>{(() => {
-                            const cal = lapRows.reduce((a, b) => a + (b.calories || 0), 0);
-                            return cal > 0 ? Math.round(cal) : "-";
-                          })()}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
+              <div className="detail-focus-row">
+                <div className="panel detail-chart-panel">
+                  <div className="detail-chart-toolbar">
+                    <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
+                      <input
+                        type="checkbox"
+                        checked={smoothGraphs}
+                        onChange={(e) => setSmoothGraphs(e.target.checked)}
+                      />
+                      <span>{t("detail.smoothGraphs")}</span>
+                    </label>
+                    <button className="btn-secondary detail-chart-reset-zoom" onClick={() => setTelemetryZoom(null)}>
+                      {t("detail.resetZoom")}
+                    </button>
                   </div>
+                  <ActivityChart
+                    records={selectedRecords}
+                    theme={theme}
+                    distanceUnit={distanceUnit}
+                    heartRateZoneBoundsBpm={hrZoneBounds}
+                    zoomRange={telemetryZoom}
+                    onZoomChange={setTelemetryZoom}
+                    lapTimestampsUtc={lapTimestampsUtc}
+                    smoothGraphs={smoothGraphs}
+                    playbackElapsedMs={playbackElapsedMs}
+                    highlightRange={selectedSplitRange}
+                  />
+                </div>
+                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} focusRange={selectedSplitRange} />
+              </div>
+              <ActivitySplits
+                records={selectedRecords}
+                theme={theme}
+                distanceUnit={distanceUnit}
+                sport={selectedActivity.sport}
+                overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
+                selectedSplitRange={selectedSplitRange}
+                onSelectSplit={setSelectedSplitRange}
+              />
+              {lapRows.length > 0 && (
+                <div className="panel laps-table-panel laps-collapsible">
+                  <button
+                    type="button"
+                    className={`laps-toggle ${showLaps ? "open" : ""}`}
+                    onClick={() => setShowLaps((v) => !v)}
+                    aria-expanded={showLaps}
+                  >
+                    <span>{t("detail.laps")} <span className="laps-toggle-count">({lapRows.length})</span></span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {showLaps && (
+                    <div className="laps-table-wrap">
+                      <table className="laps-table">
+                        <thead>
+                          <tr>
+                            <th>{t("detail.laps")}</th>
+                            <th>{t("detail.time")}</th>
+                            <th>{t("detail.distance")}</th>
+                            <th>{t("detail.avgPace")}</th>
+                            <th>{t("detail.avgHr")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lapRows.map((lap) => (
+                            <tr key={`lap-${lap.index}`}>
+                              <td>{lap.index}</td>
+                              <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
+                              <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
+                              <td>{lap.avgPace}</td>
+                              <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td>{t("detail.summary")}</td>
+                            <td>{formatDuration(lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0))}</td>
+                            <td>{(() => {
+                              const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
+                              return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
+                            })()}</td>
+                            <td>{(() => {
+                              const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
+                              const t = lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0);
+                              return d > 0 && t > 0 ? formatPace((distanceDivisorValue / (d / t)), distanceSuffix) : "-";
+                            })()}</td>
+                            <td>{(() => {
+                              const hrs = lapRows.map(l => l.avgHr).filter((h): h is number => typeof h === "number");
+                              return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : "-";
+                            })()}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
-              </div>
               <div className="insight-more-toggle-row">
                 <button
                   type="button"
@@ -1931,7 +1926,7 @@ export function Dashboard({ onLogout }: Props) {
                 </button>
               </div>
               {showMoreInsights && (
-                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} />
+                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} highlightRange={selectedSplitRange} />
               )}
             </>
           ) : (

@@ -16,6 +16,9 @@ type Props = {
   /** Reports the current playback position (ms from activity start) so other
    *  charts can render only the data up to the playhead. */
   onPlaybackChange?: (elapsedMs: number) => void;
+  /** When set, only the route section within this distance range (metres) is
+   *  drawn and the map zooms to it. */
+  focusRange?: { startM: number; endM: number } | null;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -422,7 +425,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange, focusRange = null }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -452,6 +455,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
   const pathColorModeRef = useRef(pathColorMode);
   const terrainEnabledRef = useRef(terrainEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
+  const focusRangeRef = useRef(focusRange);
   const timelineIndexRef = useRef(timelineIndex);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
@@ -548,6 +552,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
   useEffect(() => { distanceUnitRef.current = distanceUnit; }, [distanceUnit]);
   useEffect(() => { pathColorModeRef.current = pathColorMode; }, [pathColorMode]);
   useEffect(() => { terrainEnabledRef.current = terrainEnabled; }, [terrainEnabled]);
+  useEffect(() => { focusRangeRef.current = focusRange; }, [focusRange]);
   useEffect(() => {
     telemetryEnabledRef.current = telemetryEnabled;
     if (telemetryEnabled) {
@@ -683,9 +688,34 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
       return;
     }
 
-    const endIndex = Math.max(1, Math.min(coords.length - 1, timelineIndexRef.current));
-    const visibleCoords = coords.slice(0, endIndex + 1);
-    const visibleGpsRecs = gpsRecs.slice(0, endIndex + 1);
+    const focus = focusRangeRef.current;
+    let visibleCoords: number[][];
+    let visibleGpsRecs: RecordPoint[];
+
+    if (focus) {
+      // Show only the selected distance section of the route.
+      let startIdx = -1;
+      for (let i = 0; i < gpsRecs.length; i += 1) {
+        const d = gpsRecs[i].distance_m;
+        if (typeof d === "number" && d >= focus.startM) { startIdx = i; break; }
+      }
+      let endIdx = -1;
+      for (let i = gpsRecs.length - 1; i >= 0; i -= 1) {
+        const d = gpsRecs[i].distance_m;
+        if (typeof d === "number" && d <= focus.endM) { endIdx = i; break; }
+      }
+      if (startIdx >= 0 && endIdx > startIdx) {
+        visibleCoords = coords.slice(startIdx, endIdx + 1);
+        visibleGpsRecs = gpsRecs.slice(startIdx, endIdx + 1);
+      } else {
+        visibleCoords = coords;
+        visibleGpsRecs = gpsRecs;
+      }
+    } else {
+      const endIndex = Math.max(1, Math.min(coords.length - 1, timelineIndexRef.current));
+      visibleCoords = coords.slice(0, endIndex + 1);
+      visibleGpsRecs = gpsRecs.slice(0, endIndex + 1);
+    }
 
     const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, mode, solidPathColor);
     const displayGeojson = buildSolidDisplayGeoJson(visibleCoords, solidPathColor);
@@ -830,11 +860,14 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
     }
 
     if (fitToRoute) {
-      const bounds = coords.reduce(
-        (b, c) => b.extend(c as [number, number]),
-        new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
-      );
-      map.fitBounds(bounds, { padding: 40, maxZoom: 16, duration: 550 });
+      const fitCoords = focus ? visibleCoords : coords;
+      if (fitCoords.length) {
+        const bounds = fitCoords.reduce(
+          (b, c) => b.extend(c as [number, number]),
+          new maplibregl.LngLatBounds(fitCoords[0] as [number, number], fitCoords[0] as [number, number])
+        );
+        map.fitBounds(bounds, { padding: 40, maxZoom: 16, duration: 550 });
+      }
     }
   }
 
@@ -842,9 +875,31 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
     const map = mapRef.current;
     const coords = coordinatesRef.current;
     if (!map || !coords.length) return;
-    const bounds = coords.reduce(
+
+    // When a split section is focused, reset the zoom to that section rather
+    // than the whole route.
+    const focus = focusRangeRef.current;
+    let fitCoords = coords;
+    if (focus) {
+      const gpsRecs = gpsRecordsRef.current;
+      let startIdx = -1;
+      for (let i = 0; i < gpsRecs.length; i += 1) {
+        const d = gpsRecs[i].distance_m;
+        if (typeof d === "number" && d >= focus.startM) { startIdx = i; break; }
+      }
+      let endIdx = -1;
+      for (let i = gpsRecs.length - 1; i >= 0; i -= 1) {
+        const d = gpsRecs[i].distance_m;
+        if (typeof d === "number" && d <= focus.endM) { endIdx = i; break; }
+      }
+      if (startIdx >= 0 && endIdx > startIdx) {
+        fitCoords = coords.slice(startIdx, endIdx + 1);
+      }
+    }
+
+    const bounds = fitCoords.reduce(
       (b, c) => b.extend(c as [number, number]),
-      new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
+      new maplibregl.LngLatBounds(fitCoords[0] as [number, number], fitCoords[0] as [number, number])
     );
     map.fitBounds(bounds, { padding: 40, maxZoom: 16, duration: 550 });
   }
@@ -1058,6 +1113,19 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
       return () => { map.off("idle", onIdle); };
     }
   }, [coordinates, lapTimestampsUtc]);
+
+  // Redraw and zoom to the focused section when the selected split changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.isStyleLoaded()) {
+      drawRoute(map, true);
+    } else {
+      const onIdle = () => { map.off("idle", onIdle); drawRoute(map, true); };
+      map.on("idle", onIdle);
+      return () => { map.off("idle", onIdle); };
+    }
+  }, [focusRange]);
 
   // Redraw when color mode changes (don't re-fit)
   useEffect(() => {

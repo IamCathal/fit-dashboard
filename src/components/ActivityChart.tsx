@@ -21,6 +21,8 @@ type Props = {
   playbackElapsedMs?: number | null;
   /** Optional content rendered between the pace and heart-rate charts. */
   middleSlot?: ReactNode;
+  /** Distance range (metres) to highlight across the charts, e.g. a selected split. */
+  highlightRange?: { startM: number; endM: number } | null;
 };
 
 /** Slider granularity: one second expressed in minutes. */
@@ -40,6 +42,7 @@ export function ActivityChart({
   smoothGraphs = true,
   playbackElapsedMs = null,
   middleSlot,
+  highlightRange = null,
 }: Props) {
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
@@ -254,6 +257,27 @@ export function ActivityChart({
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
   };
 
+  // Translate the selected distance range into an elapsed-time window so the
+  // charts (which use a time axis) can shade the matching section.
+  const highlightTimeRange = useMemo(() => {
+    if (!highlightRange) return null;
+    const { startM, endM } = highlightRange;
+    let startMs: number | null = null;
+    let endMs: number | null = null;
+    for (const r of records) {
+      if (typeof r.distance_m !== "number") continue;
+      if (startMs === null && r.distance_m >= startM) startMs = r.timestamp_ms - t0;
+      if (r.distance_m >= endM) {
+        endMs = r.timestamp_ms - t0;
+        break;
+      }
+    }
+    if (startMs === null) startMs = 0;
+    if (endMs === null) endMs = totalDurationMs;
+    if (endMs <= startMs) return null;
+    return { startMs, endMs };
+  }, [highlightRange, records, t0, totalDurationMs]);
+
   const lapMarkers = lapTimestampsUtc
     .slice(1)
     .map((ts, idx) => {
@@ -271,6 +295,16 @@ export function ActivityChart({
   const tooltipBg = isDark ? "rgba(14, 22, 45, 0.95)" : "rgba(255, 255, 255, 0.95)";
   const tooltipBorder = isDark ? "rgba(100, 140, 220, 0.2)" : "rgba(0, 0, 0, 0.08)";
   const tooltipText = isDark ? "#e2e8f4" : "#0f172a";
+
+  const highlightMarkArea = highlightTimeRange
+    ? {
+        silent: true,
+        itemStyle: {
+          color: isDark ? "rgba(34, 211, 238, 0.16)" : "rgba(8, 145, 178, 0.12)",
+        },
+        data: [[{ xAxis: highlightTimeRange.startMs }, { xAxis: highlightTimeRange.endMs }]],
+      }
+    : undefined;
 
   const hrOption = {
     tooltip: {
@@ -361,6 +395,7 @@ export function ActivityChart({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
+        markArea: highlightMarkArea,
       },
     ],
   };
@@ -443,6 +478,7 @@ export function ActivityChart({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
+        markArea: highlightMarkArea,
       }] : []),
       ...(showAvgPace ? [{
         name: t("chart.avgPace"),
@@ -453,6 +489,7 @@ export function ActivityChart({
         itemStyle: { color: "#3b82f6" },
         sampling: "lttb",
         data: avgPaceSeriesVisible,
+        markArea: showCurrentPace ? undefined : highlightMarkArea,
       }] : []),
     ],
   };
@@ -490,7 +527,7 @@ export function ActivityChart({
           {t("chart.avgPace")}
         </button>
       </div>
-      <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 250, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%", minWidth: 0, overflow: "hidden" }} />
       {paceDomain && (
         <div className="pace-range-control">
           <div className="pace-range-summary">
@@ -567,7 +604,7 @@ export function ActivityChart({
       )}
       {middleSlot}
       <h4 className="detail-chart-heading">{t("chart.heartRate")}</h4>
-      <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 250, width: "100%", minWidth: 0, overflow: "hidden" }} />
     </div>
   );
 }

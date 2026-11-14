@@ -13,6 +13,8 @@ import {
 } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
+type SplitRange = { startM: number; endM: number };
+
 type Props = {
   records: RecordPoint[];
   theme: "light" | "dark" | "paper" | "paper-dark";
@@ -26,10 +28,16 @@ type Props = {
   overallAvgPaceSecPerUnit?: number | null;
   /** Render without the outer panel chrome (used inside the combined chart stack). */
   embedded?: boolean;
+  /** Currently highlighted split distance range (metres), shared with the charts and map. */
+  selectedSplitRange?: SplitRange | null;
+  /** Called when a split bar is pressed. Passing null clears the selection. */
+  onSelectSplit?: (range: SplitRange | null) => void;
 };
 
 type Split = {
   index: number;
+  startM: number;
+  endM: number;
   distanceM: number;
   durationS: number;
   paceMinPerUnit: number | null;
@@ -166,6 +174,8 @@ function computeSplits(records: RecordPoint[], unitMeters: number, splitSizeUnit
       const aggregateResult = aggregate(previousBoundaryDistance, nextBoundaryDistance);
       splits.push({
         index: splitIndex,
+        startM: previousBoundaryDistance,
+        endM: nextBoundaryDistance,
         distanceM,
         durationS,
         paceMinPerUnit: Number.isFinite(paceMinPerUnit) && paceMinPerUnit > 0 ? paceMinPerUnit : null,
@@ -206,7 +216,16 @@ function paceColor(speed: number, minSpeed: number, maxSpeed: number): string {
   return mixColor(MID_COLOR, FAST_COLOR, (t - 0.5) * 2);
 }
 
-export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvgPaceSecPerUnit, embedded = false }: Props) {
+export function ActivitySplits({
+  records,
+  theme,
+  distanceUnit,
+  sport,
+  overallAvgPaceSecPerUnit,
+  embedded = false,
+  selectedSplitRange = null,
+  onSelectSplit,
+}: Props) {
   const { t } = useTranslation();
   const unitMeters = distanceUnit === "mi" ? METERS_PER_MILE : METERS_PER_KILOMETER;
   const defaultSplitSize = isCyclingSport(sport) ? 5 : 1;
@@ -270,14 +289,28 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
   const tooltipBorder = isDark ? "rgba(100, 140, 220, 0.2)" : "rgba(0, 0, 0, 0.08)";
   const tooltipText = isDark ? "#e2e8f4" : "#0f172a";
 
+  const isSplitSelected = (split: Split): boolean =>
+    selectedSplitRange != null &&
+    Math.abs(selectedSplitRange.startM - split.startM) < 0.5 &&
+    Math.abs(selectedSplitRange.endM - split.endM) < 0.5;
+
   const barData = splits.map((split, index) => {
     const speed = speeds[index];
     const isFastest = index === fastestIndex && splits.length > 1;
+    const isSelected = isSplitSelected(split);
     return {
       value: speed,
       itemStyle: {
         color: paceColor(speed, minSpeed, maxSpeed),
         borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+        ...(isSelected
+          ? {
+              borderColor: accentColor,
+              borderWidth: 2,
+              shadowBlur: 12,
+              shadowColor: accentColor,
+            }
+          : {}),
       },
       label: isFastest
         ? {
@@ -349,6 +382,7 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
         type: "bar",
         data: barData,
         barMaxWidth: 42,
+        cursor: "pointer",
         label: {
           show: true,
           position: "top",
@@ -419,6 +453,13 @@ export function ActivitySplits({ records, theme, distanceUnit, sport, overallAvg
         option={option}
         notMerge
         onChartReady={enableChartWheelPageScroll}
+        onEvents={{
+          click: (params: any) => {
+            const split: Split | undefined = params?.data?.split;
+            if (!split || !onSelectSplit) return;
+            onSelectSplit(isSplitSelected(split) ? null : { startM: split.startM, endM: split.endM });
+          },
+        }}
         style={{ height: 300, width: "100%", minWidth: 0 }}
       />
 

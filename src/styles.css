@@ -1939,8 +1939,8 @@ button:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
   align-items: center;
-  gap: 1.25rem;
-  padding: 0.85rem 1.1rem;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
   width: 100%;
   min-width: var(--content-panel-min-width);
   border-radius: 14px;
@@ -1990,9 +1990,10 @@ button:focus-visible {
 }
 
 .detail-activity-date {
-  font-size: 1.05rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* Right: stats bar. */
@@ -2205,16 +2206,54 @@ button:focus-visible {
   flex-direction: column;
 }
 
+/* Laps are secondary: collapsed by default at the bottom of the page. */
+.laps-collapsible {
+  min-height: 0;
+  padding: 0.6rem 0.9rem;
+  /* The main content is a fixed-height flex column; without this the panel
+     shrinks below its content and .panel's overflow:hidden clips the table. */
+  flex-shrink: 0;
+}
+
+.laps-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+
+.laps-toggle-count {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.laps-toggle.open .detail-stats-chevron {
+  transform: rotate(180deg);
+}
+
+.laps-collapsible .laps-table-wrap {
+  flex: none;
+  margin-top: 0.5rem;
+  max-height: 420px;
+}
+
 .laps-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
 }
 
 .laps-table th,
 .laps-table td {
-  padding: 0.45rem 0.5rem;
+  padding: 0.55rem 0.65rem;
   border-bottom: 1px solid var(--border);
   text-align: right;
   white-space: nowrap;
@@ -2232,7 +2271,7 @@ button:focus-visible {
   z-index: 11;
   background: var(--bg-surface);
   color: var(--text-secondary);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
@@ -2506,12 +2545,14 @@ button:focus-visible {
 }
 
 /* ── Detail focus row (Individual view) ──────────────────────────────
-   Mirrors the overview: the route map is the hero, with the key stats
-   and the heart-rate/pace charts stacked alongside it. */
+   The pace/heart-rate chart and the route map sit side by side as the
+   hero of the page, so the two most-used views are visible at once. */
 .detail-focus-row {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: 0.85rem;
+  /* Stretch both columns to the same height so the map canvas can fill the
+     full block instead of leaving empty space below it. */
   align-items: stretch;
 }
 
@@ -2528,19 +2569,19 @@ button:focus-visible {
 
 .detail-focus-row .map-canvas-wrap {
   flex: 1;
-  min-height: 380px;
+  min-height: 480px;
 }
 
 .detail-focus-row .map-canvas {
   height: 100%;
-  min-height: 380px;
+  min-height: 480px;
 }
 
 .detail-primary-stats {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.35rem 1.6rem;
+  gap: 0.35rem 1.1rem;
 }
 
 /* Individual-view stats are plain inline figures: no card chrome, so the

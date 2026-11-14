@@ -24,8 +24,11 @@ type Props = {
   smoothGraphs?: boolean;
   /** When set, only data up to this elapsed time (ms) is drawn. */
   playbackElapsedMs?: number | null;
-  /** "primary" renders the always-visible panels, "more" the collapsible ones. */
+  /** "primary" renders the always-visible panels, "more" the secondary charts
+   *  tucked behind the expand toggle. */
   mode?: "primary" | "more";
+  /** Distance range (metres) to highlight across the time-based charts, e.g. a selected split. */
+  highlightRange?: { startM: number; endM: number } | null;
 };
 
 /** Runs get the secondary charts tucked away by default. */
@@ -71,6 +74,7 @@ export function ActivityInsights({
   smoothGraphs = true,
   playbackElapsedMs = null,
   mode = "primary",
+  highlightRange = null,
 }: Props) {
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark" || theme === "paper-dark";
@@ -91,6 +95,38 @@ export function ActivityInsights({
 
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
+
+  // Translate the selected distance range into an elapsed-time window so the
+  // time-based charts can shade the matching section.
+  const highlightTimeRange = useMemo(() => {
+    if (!highlightRange) return null;
+    const { startM, endM } = highlightRange;
+    let startMs: number | null = null;
+    let endMs: number | null = null;
+    for (const r of records) {
+      if (typeof r.distance_m !== "number") continue;
+      if (startMs === null && r.distance_m >= startM) startMs = r.timestamp_ms - t0;
+      if (r.distance_m >= endM) {
+        endMs = r.timestamp_ms - t0;
+        break;
+      }
+    }
+    if (startMs === null) startMs = 0;
+    if (endMs === null) endMs = totalDurationMs;
+    if (endMs <= startMs) return null;
+    return { startMs, endMs };
+  }, [highlightRange, records, t0, totalDurationMs]);
+
+  const highlightMarkArea = highlightTimeRange
+    ? {
+        silent: true,
+        itemStyle: {
+          color: isDark ? "rgba(34, 211, 238, 0.16)" : "rgba(8, 145, 178, 0.12)",
+        },
+        data: [[{ xAxis: highlightTimeRange.startMs }, { xAxis: highlightTimeRange.endMs }]],
+      }
+    : undefined;
+
   const smoothWindow = smoothGraphs ? getDynamicSmoothingWindow(records.length, totalDurationMs, zoomRange) : 1;
   const timeline = useMemo(() => records.map((r, i) => {
     const prev = i > 0 ? records[i - 1] : undefined;
@@ -309,6 +345,7 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
+        markArea: highlightMarkArea,
       },
     ],
   };
@@ -362,6 +399,7 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
+        markArea: highlightMarkArea,
       },
     ],
   };
@@ -456,6 +494,7 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
+        markArea: highlightMarkArea,
       },
       ...(hasPowerData ? [{
         name: tr("insights.power"), type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
@@ -587,6 +626,21 @@ export function ActivityInsights({
   const rowTop = [16, 64, 112, 160];
   const rowHeight = 34;
 
+  // The heatmap uses a per-minute category axis, so the highlight is expressed
+  // as the matching category labels rather than raw milliseconds.
+  const heatHighlightMarkArea = highlightTimeRange
+    ? {
+        silent: true,
+        itemStyle: {
+          color: isDark ? "rgba(34, 211, 238, 0.18)" : "rgba(8, 145, 178, 0.14)",
+        },
+        data: [[
+          { xAxis: formatRelTime(Math.max(0, Math.floor(highlightTimeRange.startMs / 60000)) * 60000) },
+          { xAxis: formatRelTime(Math.min(heatBins - 1, Math.ceil(highlightTimeRange.endMs / 60000)) * 60000) },
+        ]],
+      }
+    : undefined;
+
   const heatOption = {
     tooltip: {
       position: "top",
@@ -641,6 +695,7 @@ export function ActivityInsights({
       encode: { x: 0, y: 1, value: 2 },
       data: heatSeriesData[idx],
       emphasis: { itemStyle: { borderColor: isDark ? "#fff" : "#0f172a", borderWidth: 1 } },
+      markArea: heatHighlightMarkArea,
     })),
   };
 
@@ -658,30 +713,28 @@ export function ActivityInsights({
   if (mode === "more") {
     return (
       <section className="insight-grid">
-        <article className="panel insight-panel-wide">
+        <article className="panel">
           <h3>{tr("insights.elevation")}</h3>
           <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
-        <article className="panel insight-panel-wide">
+        <article className="panel">
           <h3>{tr("insights.speedTrend")}</h3>
           <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
-        <article className="panel insight-panel-wide">
+        <article className="panel">
           <h3>{hasPowerData ? tr("insights.cadenceAndPower") : tr("insights.cadence")}</h3>
           <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
-        <div className="insight-pair-row">
-          {hasHeartRateData && (
-            <article className="panel">
-              <h3>{tr("insights.hrHistogram")}</h3>
-              <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-            </article>
-          )}
+        {hasHeartRateData && (
           <article className="panel">
-            <h3>{tr("insights.effortHeatmap")}</h3>
-            <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+            <h3>{tr("insights.hrHistogram")}</h3>
+            <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
           </article>
-        </div>
+        )}
+        <article className="panel insight-panel-wide">
+          <h3>{tr("insights.effortHeatmap")}</h3>
+          <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+        </article>
       </section>
     );
   }
