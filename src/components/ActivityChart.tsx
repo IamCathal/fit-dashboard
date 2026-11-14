@@ -5,6 +5,7 @@ import { enableChartWheelPageScroll } from "../lib/chartScroll";
 import { buildHeartRateZones } from "../lib/hrZones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { convertDistanceMeters, convertPaceMinPerKm, distanceLabel, paceLabel, type DistanceUnit } from "../lib/units";
+import { distanceRangeToTimeRange } from "../lib/distanceRange";
 import { useTranslation } from "../lib/i18n";
 import { PaceRangeSlider } from "./PaceRangeSlider";
 
@@ -259,24 +260,10 @@ export function ActivityChart({
 
   // Translate the selected distance range into an elapsed-time window so the
   // charts (which use a time axis) can shade the matching section.
-  const highlightTimeRange = useMemo(() => {
-    if (!highlightRange) return null;
-    const { startM, endM } = highlightRange;
-    let startMs: number | null = null;
-    let endMs: number | null = null;
-    for (const r of records) {
-      if (typeof r.distance_m !== "number") continue;
-      if (startMs === null && r.distance_m >= startM) startMs = r.timestamp_ms - t0;
-      if (r.distance_m >= endM) {
-        endMs = r.timestamp_ms - t0;
-        break;
-      }
-    }
-    if (startMs === null) startMs = 0;
-    if (endMs === null) endMs = totalDurationMs;
-    if (endMs <= startMs) return null;
-    return { startMs, endMs };
-  }, [highlightRange, records, t0, totalDurationMs]);
+  const highlightTimeRange = useMemo(
+    () => distanceRangeToTimeRange(records, highlightRange),
+    [highlightRange, records],
+  );
 
   const lapMarkers = lapTimestampsUtc
     .slice(1)

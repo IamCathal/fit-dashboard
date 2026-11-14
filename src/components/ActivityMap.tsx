@@ -4,6 +4,7 @@ import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
+import { indicesForDistanceRange } from "../lib/distanceRange";
 import { useTranslation } from "../lib/i18n";
 import { isRunSport } from "./ActivityInsights";
 
@@ -694,19 +695,10 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
 
     if (focus) {
       // Show only the selected distance section of the route.
-      let startIdx = -1;
-      for (let i = 0; i < gpsRecs.length; i += 1) {
-        const d = gpsRecs[i].distance_m;
-        if (typeof d === "number" && d >= focus.startM) { startIdx = i; break; }
-      }
-      let endIdx = -1;
-      for (let i = gpsRecs.length - 1; i >= 0; i -= 1) {
-        const d = gpsRecs[i].distance_m;
-        if (typeof d === "number" && d <= focus.endM) { endIdx = i; break; }
-      }
-      if (startIdx >= 0 && endIdx > startIdx) {
-        visibleCoords = coords.slice(startIdx, endIdx + 1);
-        visibleGpsRecs = gpsRecs.slice(startIdx, endIdx + 1);
+      const range = indicesForDistanceRange(gpsRecs, focus);
+      if (range) {
+        visibleCoords = coords.slice(range.startIdx, range.endIdx + 1);
+        visibleGpsRecs = gpsRecs.slice(range.startIdx, range.endIdx + 1);
       } else {
         visibleCoords = coords;
         visibleGpsRecs = gpsRecs;
@@ -881,19 +873,9 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
     const focus = focusRangeRef.current;
     let fitCoords = coords;
     if (focus) {
-      const gpsRecs = gpsRecordsRef.current;
-      let startIdx = -1;
-      for (let i = 0; i < gpsRecs.length; i += 1) {
-        const d = gpsRecs[i].distance_m;
-        if (typeof d === "number" && d >= focus.startM) { startIdx = i; break; }
-      }
-      let endIdx = -1;
-      for (let i = gpsRecs.length - 1; i >= 0; i -= 1) {
-        const d = gpsRecs[i].distance_m;
-        if (typeof d === "number" && d <= focus.endM) { endIdx = i; break; }
-      }
-      if (startIdx >= 0 && endIdx > startIdx) {
-        fitCoords = coords.slice(startIdx, endIdx + 1);
+      const range = indicesForDistanceRange(gpsRecordsRef.current, focus);
+      if (range) {
+        fitCoords = coords.slice(range.startIdx, range.endIdx + 1);
       }
     }
 
