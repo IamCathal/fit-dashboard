@@ -3,10 +3,22 @@
    Modern dark-first UI with glassmorphism, Inter font, and responsive layout
    =================================================================== */
 
+/* ── Self-hosted font ──────────────────────────────────────────────── */
+
+/* Inter variable font, bundled locally so no request ever leaves the
+   browser to a font CDN. Covers Latin, Greek and Cyrillic. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/InterVariable.woff2') format('woff2-variations');
+}
+
 /* ── Design Tokens ─────────────────────────────────────────────────── */
 
 :root {
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --content-panel-min-width: 450px;
 
   /* Light Theme */
