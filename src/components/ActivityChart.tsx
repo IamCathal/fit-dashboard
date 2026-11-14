@@ -733,13 +733,22 @@ export function ActivityChart({
               </div>
               <div className="pace-range-panel-footer">
                 <span className="pace-range-hint">{t("chart.hrRangeHint")}</span>
-                <button
-                  className="btn-secondary pace-range-reset"
-                  onClick={() => setHrWindow(null)}
-                  disabled={hrDomain.usingDefault}
-                >
-                  {t("chart.paceRangeReset")}
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn-secondary pace-range-reset"
+                    onClick={() => setHrWindow({ low: hrDomain.min, high: hrDomain.max })}
+                    disabled={hrDomain.isFullRange}
+                  >
+                    {t("chart.hrRangeEntire")}
+                  </button>
+                  <button
+                    className="btn-secondary pace-range-reset"
+                    onClick={() => setHrWindow(null)}
+                    disabled={hrDomain.usingDefault}
+                  >
+                    {t("chart.paceRangeReset")}
+                  </button>
+                </div>
               </div>
             </div>
           )}

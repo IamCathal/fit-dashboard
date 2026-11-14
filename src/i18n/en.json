@@ -405,6 +405,7 @@
   "chart.hrRangeMin": "Min",
   "chart.hrRangeMax": "Max",
   "chart.hrRangeHint": "Drag the handles to focus on your working heart-rate band",
+  "chart.hrRangeEntire": "Entire range",
 
   "splits.title": "Splits",
   "splits.split": "Split",
