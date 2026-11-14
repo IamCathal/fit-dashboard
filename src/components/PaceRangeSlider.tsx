@@ -14,6 +14,10 @@ type Props = {
   step?: number;
   /** Accessible label for the slider group. */
   ariaLabel?: string;
+  /** Accessible label for the lower/first handle (defaults to "fast"). */
+  startLabel?: string;
+  /** Accessible label for the upper/second handle (defaults to "slow"). */
+  endLabel?: string;
   onChange: (fast: number, slow: number) => void;
 };
 
@@ -35,6 +39,8 @@ export function PaceRangeSlider({
   slow,
   step = DEFAULT_STEP,
   ariaLabel,
+  startLabel = "fast",
+  endLabel = "slow",
   onChange,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -126,7 +132,7 @@ export function PaceRangeSlider({
           style={{ left: `${toPercent(fast)}%` }}
           role="slider"
           tabIndex={0}
-          aria-label={`${ariaLabel ?? ""} fast`}
+          aria-label={`${ariaLabel ?? ""} ${startLabel}`}
           aria-valuemin={lower}
           aria-valuemax={slow}
           aria-valuenow={fast}
@@ -142,7 +148,7 @@ export function PaceRangeSlider({
           style={{ left: `${toPercent(slow)}%` }}
           role="slider"
           tabIndex={0}
-          aria-label={`${ariaLabel ?? ""} slow`}
+          aria-label={`${ariaLabel ?? ""} ${endLabel}`}
           aria-valuemin={fast}
           aria-valuemax={upper}
           aria-valuenow={slow}

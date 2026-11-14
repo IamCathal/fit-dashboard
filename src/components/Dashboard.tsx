@@ -1453,7 +1453,6 @@ export function Dashboard({ onLogout }: Props) {
                         {importProgress.current ? ` - ${importProgress.current}` : ""}
                       </div>
                     )}
-                    <span className="import-hint">{t("sidebar.dropHint")}</span>
                   </div>
                 </div>
               )}
@@ -1852,7 +1851,6 @@ export function Dashboard({ onLogout }: Props) {
                     >
                       {selectedActivity.show_in_overview === false ? <IconMapPinOff /> : <IconMapPin />}
                     </button>
-                    <span className="detail-activity-date">{formatDate(selectedActivity.start_ts_utc)}</span>
                   </div>
                 </div>
                 <div className="detail-header-right">

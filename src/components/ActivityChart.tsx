@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
-import { buildHeartRateZones } from "../lib/hrZones";
+import { buildHeartRateZones, resolveHeartRateZoneIndex } from "../lib/hrZones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { convertDistanceMeters, convertPaceMinPerKm, distanceLabel, paceLabel, type DistanceUnit } from "../lib/units";
 import { distanceRangeToTimeRange } from "../lib/distanceRange";
@@ -34,6 +34,13 @@ const PACE_RANGE_STEP = 1 / 60;
 
 /** Default half-width of the visible pace window, in minutes. */
 const DEFAULT_PACE_HALF_WINDOW_MIN = 1.5;
+
+/** Heart-rate range granularity, in bpm. */
+const HR_RANGE_STEP = 1;
+
+/** Sensible bounds for the heart-rate range slider. */
+const HR_RANGE_FLOOR = 30;
+const HR_RANGE_CEILING = 230;
 
 export function ActivityChart({
   records,
@@ -200,15 +207,36 @@ export function ActivityChart({
     return { min, max, median };
   }, [paceSeriesSmoothed]);
 
+  // Heart-rate spread, used to give the HR chart a tight default axis instead
+  // of the old fixed 0..max style baseline.
+  const hrStats = useMemo(() => {
+    const values: number[] = [];
+    for (const row of hrSeriesSmoothed) {
+      const value = row[1];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) values.push(value);
+    }
+    if (values.length === 0) return null;
+    values.sort((a, b) => a - b);
+    const min = values[0];
+    const max = values[values.length - 1];
+    const mid = Math.floor(values.length / 2);
+    const median = values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+    return { min, max, median };
+  }, [hrSeriesSmoothed]);
+
   // null means "use the default window centred on the median pace".
   const [paceWindow, setPaceWindow] = useState<{ fast: number; slow: number } | null>(null);
   const [showPaceRange, setShowPaceRange] = useState(false);
   const [showCurrentPace, setShowCurrentPace] = useState(true);
   const [showAvgPace, setShowAvgPace] = useState(true);
+  const [hrWindow, setHrWindow] = useState<{ low: number; high: number } | null>(null);
+  const [showHrRange, setShowHrRange] = useState(false);
 
   useEffect(() => {
     setPaceWindow(null);
     setShowPaceRange(false);
+    setHrWindow(null);
+    setShowHrRange(false);
   }, [records, distanceUnit, smoothGraphs]);
 
   const paceDomain = useMemo(() => {
@@ -254,6 +282,40 @@ export function ActivityChart({
         fast <= dataMin + PACE_RANGE_STEP / 2 && slow >= dataMax - PACE_RANGE_STEP / 2,
     };
   }, [paceStats, paceWindow, overallAvgPace]);
+
+  const hrDomain = useMemo(() => {
+    if (!hrStats) return null;
+
+    let dataMin = Math.max(HR_RANGE_FLOOR, Math.floor(hrStats.min));
+    let dataMax = Math.min(HR_RANGE_CEILING, Math.ceil(hrStats.max));
+    if (dataMax - dataMin < 10) {
+      const centre = (dataMin + dataMax) / 2;
+      dataMin = Math.max(HR_RANGE_FLOOR, Math.floor(centre - 5));
+      dataMax = Math.min(HR_RANGE_CEILING, Math.ceil(centre + 5));
+    }
+
+    const clampToData = (value: number) => Math.max(dataMin, Math.min(dataMax, value));
+    // Default to the observed range rather than a fixed baseline so a steady
+    // effort is not squashed into a mostly-empty axis.
+    let low = clampToData(hrWindow ? hrWindow.low : dataMin);
+    let high = clampToData(hrWindow ? hrWindow.high : dataMax);
+    if (high - low < 5) {
+      low = clampToData(hrStats.median - 5);
+      high = clampToData(hrStats.median + 5);
+    }
+    if (high - low < HR_RANGE_STEP) {
+      high = Math.min(dataMax, low + HR_RANGE_STEP);
+    }
+
+    return {
+      min: dataMin,
+      max: dataMax,
+      low,
+      high,
+      usingDefault: hrWindow === null,
+      isFullRange: low <= dataMin + 0.5 && high >= dataMax - 0.5,
+    };
+  }, [hrStats, hrWindow]);
 
   const formatPaceMinutes = (value: number) => {
     const totalSeconds = Math.round(Math.max(0, value) * 60);
@@ -309,7 +371,16 @@ export function ActivityChart({
         let html = formatTooltipHeader(relTime);
         for (const s of params) {
           if (s.value[1] !== null && s.value[1] !== undefined) {
-            html += `<div>${s.marker} ${s.seriesName}: <strong>${s.value[1]}</strong></div>`;
+            const hrValue = Number(s.value[1]);
+            const zoneIndex = resolveHeartRateZoneIndex(hrValue, hrZones);
+            const zone = hrZones[zoneIndex];
+            const zoneColor = zone?.color ?? axisColor;
+            let line = `<div>${s.marker} ${s.seriesName}: <strong>${hrValue} bpm</strong>`;
+            if (zone) {
+              line += ` <span style="display:inline-flex;align-items:center;gap:4px;margin-left:4px;padding:1px 6px;border-radius:999px;font-size:11px;background:${zoneColor}22;color:${zoneColor};"><span style="width:7px;height:7px;border-radius:999px;background:${zoneColor};"></span>${t("chart.zone")} ${zoneIndex + 1}</span>`;
+            }
+            line += `</div>`;
+            html += line;
           }
         }
         const distanceKm = p?.value?.[3] as number | null | undefined;
@@ -355,7 +426,7 @@ export function ActivityChart({
     yAxis: {
       type: "value",
       name: "bpm",
-      min: 40,
+      ...(hrDomain ? { min: hrDomain.low, max: hrDomain.high } : { min: 40 }),
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -530,7 +601,7 @@ export function ActivityChart({
         <div className="pace-range-control">
           <div className="pace-range-summary">
             <div className="pace-range-summary-text">
-              <span className="pace-range-summary-label">{t("chart.paceRange")}</span>
+              <span className="pace-range-summary-label">{t("chart.paceRangeShowing")}</span>
               <span className="pace-range-summary-value">
                 {formatPaceMinutes(paceDomain.fast)} – {formatPaceMinutes(paceDomain.slow)} {paceLabel(distanceUnit)}
               </span>
@@ -603,6 +674,64 @@ export function ActivityChart({
       {middleSlot}
       <h4 className="detail-chart-heading">{t("chart.heartRate")}</h4>
       <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 250, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      {hrDomain && (
+        <div className="pace-range-control">
+          <div className="pace-range-summary">
+            <div className="pace-range-summary-text">
+              <span className="pace-range-summary-label">{t("chart.hrRangeShowing")}</span>
+              <span className="pace-range-summary-value">
+                {Math.round(hrDomain.low)} – {Math.round(hrDomain.high)} bpm
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary pace-range-toggle"
+              aria-expanded={showHrRange}
+              onClick={() => setShowHrRange((value) => !value)}
+            >
+              {showHrRange ? t("chart.paceRangeHide") : t("chart.hrRangeAdjust")}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </div>
+          {showHrRange && (
+            <div className="pace-range-panel">
+              <PaceRangeSlider
+                min={hrDomain.min}
+                max={hrDomain.max}
+                fast={hrDomain.low}
+                slow={hrDomain.high}
+                step={HR_RANGE_STEP}
+                ariaLabel={t("chart.hrRange")}
+                startLabel={t("chart.hrRangeLow")}
+                endLabel={t("chart.hrRangeHigh")}
+                onChange={(low, high) => setHrWindow({ low, high })}
+              />
+              <div className="pace-range-scale">
+                <span className="pace-range-scale-bound">
+                  <span className="pace-range-scale-label">{t("chart.hrRangeMin")}</span>
+                  <strong>{Math.round(hrDomain.min)} bpm</strong>
+                </span>
+                <span className="pace-range-scale-bound">
+                  <span className="pace-range-scale-label">{t("chart.hrRangeMax")}</span>
+                  <strong>{Math.round(hrDomain.max)} bpm</strong>
+                </span>
+              </div>
+              <div className="pace-range-panel-footer">
+                <span className="pace-range-hint">{t("chart.hrRangeHint")}</span>
+                <button
+                  className="btn-secondary pace-range-reset"
+                  onClick={() => setHrWindow(null)}
+                  disabled={hrDomain.usingDefault}
+                >
+                  {t("chart.paceRangeReset")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
