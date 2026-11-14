@@ -221,7 +221,11 @@ export function ActivityChart({
     const max = values[values.length - 1];
     const mid = Math.floor(values.length / 2);
     const median = values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
-    return { min, max, median };
+    const percentile = (p: number) => {
+      const idx = Math.min(values.length - 1, Math.max(0, Math.round((values.length - 1) * p)));
+      return values[idx];
+    };
+    return { min, max, median, p10: percentile(0.1) };
   }, [hrSeriesSmoothed]);
 
   // null means "use the default window centred on the median pace".
@@ -295,10 +299,19 @@ export function ActivityChart({
     }
 
     const clampToData = (value: number) => Math.max(dataMin, Math.min(dataMax, value));
-    // Default to the observed range rather than a fixed baseline so a steady
-    // effort is not squashed into a mostly-empty axis.
-    let low = clampToData(hrWindow ? hrWindow.low : dataMin);
-    let high = clampToData(hrWindow ? hrWindow.high : dataMax);
+    // Raise the lower bound to the 10th percentile so low warm-up/resting
+    // outliers do not squash the run's actual heart-rate variance into the
+    // bottom of the axis. The upper bound always stays at the observed max so
+    // peaks are never clipped.
+    const defaultLow = Math.max(dataMin, Math.floor(hrStats.p10));
+    const defaultHigh = dataMax;
+    let low = clampToData(hrWindow ? hrWindow.low : defaultLow);
+    let high = clampToData(hrWindow ? hrWindow.high : defaultHigh);
+    if (high - low < 20) {
+      const centre = (low + high) / 2;
+      low = clampToData(centre - 10);
+      high = clampToData(centre + 10);
+    }
     if (high - low < 5) {
       low = clampToData(hrStats.median - 5);
       high = clampToData(hrStats.median + 5);
