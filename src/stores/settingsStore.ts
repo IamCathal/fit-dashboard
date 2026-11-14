@@ -2,9 +2,9 @@ import { create } from "zustand";
 import { api } from "../lib/api";
 import { DEFAULT_HR_ZONE_BOUNDS } from "../lib/hrZones";
 
-type Theme = "light" | "dark" | "paper" | "paper-dark";
-type DistanceUnit = "km" | "mi";
-type TimeFormat = "12h" | "24h";
+export type Theme = "light" | "dark" | "paper" | "paper-dark";
+export type DistanceUnit = "km" | "mi";
+export type TimeFormat = "12h" | "24h";
 export type MapStyle = "default" | "light" | "dark" | "openstreet" | "topo" | "satellite";
 export type Language = string;
 

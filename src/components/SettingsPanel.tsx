@@ -11,16 +11,6 @@ type StorageInfo = {
   fit_files_dir: string;
 };
 
-type VersionBadgeStatus = {
-  state: "hidden" | "latest" | "update";
-  latestVersion: string | null;
-};
-
-type Props = {
-  appVersion: string;
-  versionBadgeStatus: VersionBadgeStatus;
-};
-
 const iconProps = {
   fill: "none",
   stroke: "currentColor",
@@ -197,7 +187,7 @@ function HeartRateZoneDialog({
 
 /* ── Settings Panel ────────────────────────────────────────────────── */
 
-export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
+export function SettingsPanel() {
   const {
     showSettings,
     theme,
@@ -416,24 +406,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
           {storageInfo ? (
             <div className="storage-meta">
               <div>
-                <span>{t("settings.appVersion")}</span> <code>{appVersion}</code>
-                {versionBadgeStatus.state === "latest" && (
-                  <span className="version-status-badge latest" title="You are on the latest release">
-                    {t("settings.latest")}
-                  </span>
-                )}
-                {versionBadgeStatus.state === "update" && versionBadgeStatus.latestVersion && (
-                  <a
-                    className="version-status-badge update"
-                    href="https://fitdashboard.app"
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    title={`A newer release is available: ${versionBadgeStatus.latestVersion}`}
-                    onClick={openExternalLink}
-                  >
-                    {t("settings.updateTo", { version: versionBadgeStatus.latestVersion })}
-                  </a>
-                )}
+                <span>{t("settings.appVersion")}</span> <code>{typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "unknown"}</code>
               </div>
               <div><span>{t("settings.appData")}</span> <code>{storageInfo.data_dir}</code></div>
               <div><span>{t("settings.database")}</span> <code>{storageInfo.db_path}</code></div>

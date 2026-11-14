@@ -1,44 +1,32 @@
-import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { flushSync } from "react-dom";
 import { useActivityStore } from "../stores/activityStore";
-import { ActivityChart } from "./ActivityChart";
-import { ActivitySplits, type SplitSummary } from "./ActivitySplits";
-import { ActivityMap } from "./ActivityMap";
+import { useSettingsStore } from "../stores/settingsStore";
+import { useTranslation } from "../lib/i18n";
+import { api } from "../lib/api";
+import {
+  exportSingleActivity,
+  exportBulkActivities,
+  type ExportFormat,
+  type BulkExportProgress,
+} from "../lib/exportUtils";
+import { distanceDivisor, distanceLabel } from "../lib/units";
+import { parseUtcDate } from "../lib/activityFormat";
+import type { Activity, RecordPoint } from "../types";
+import { AppHeader, type DashboardTab } from "./AppHeader";
+import { Sidebar } from "./Sidebar";
+import { OverviewView, type OverviewTimeframe } from "./OverviewView";
+import { DetailView } from "./DetailView";
 import { CompareCharts } from "./CompareCharts";
-import { ActivityInsights } from "./ActivityInsights";
-import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
-import { OverviewLocationMap } from "./OverviewLocationMap";
-import { OverviewTrainingPattern } from "./OverviewTrainingPattern";
-import { OverviewWeeklyTrend } from "./OverviewWeeklyTrend";
-import { OverviewPersonalRecords } from "./OverviewPersonalRecords";
-import { OverviewActivityTable } from "./OverviewActivityTable";
-import { OverviewWeekSummary } from "./OverviewWeekSummary";
-import { DatePickerPopover } from "./DatePickerPopover";
-import { DateRange } from "react-day-picker";
 import { DonationBanner } from "./DonationBanner";
 import { SettingsPanel } from "./SettingsPanel";
-import { api } from "../lib/api";
-import { isTauri } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { exportSingleActivity, exportBulkActivities, type ExportFormat, type BulkExportProgress } from "../lib/exportUtils";
-import { useSettingsStore } from "../stores/settingsStore";
-import type { Activity, RecordPoint } from "../types";
-import appIcon from "../assets/app-icon.svg";
-import {
-  convertElevationMeters,
-  convertSpeedKmh,
-  distanceDivisor,
-  distanceLabel,
-  elevationLabel,
-  speedLabel,
-} from "../lib/units";
-import { useTranslation } from "../lib/i18n";
+import { ActivityContextMenu } from "./ActivityContextMenu";
+import { BulkProgressOverlay } from "./BulkProgressOverlay";
+import { IconBarChart } from "./icons";
+import { useActivityFilters } from "../hooks/useActivityFilters";
+import { useImportQueue } from "../hooks/useImportQueue";
 
 type Props = { onLogout: () => Promise<void> };
-
-type OverviewTimeframe = "all" | "1m" | "2m" | "3m" | "6m" | "1y";
-
-const OVERVIEW_TIMEFRAMES: OverviewTimeframe[] = ["all", "1m", "2m", "3m", "6m", "1y"];
 
 const OVERVIEW_TIMEFRAME_MONTHS: Record<Exclude<OverviewTimeframe, "all">, number> = {
   "1m": 1,
@@ -48,248 +36,13 @@ const OVERVIEW_TIMEFRAME_MONTHS: Record<Exclude<OverviewTimeframe, "all">, numbe
   "1y": 12,
 };
 
-type VersionBadgeStatus = {
-  state: "hidden" | "latest" | "update";
-  latestVersion: string | null;
-};
-
-type ActivityMetadata = {
-  heart_rate_zone_bounds_bpm?: number[];
-  file_id?: {
-    product_name?: string | null;
-    serial_number?: number | null;
-  };
-  activity_metrics?: {
-    vo2_max?: number | null;
-  };
-  session?: {
-    beginning_body_battery?: number | null;
-    ending_body_battery?: number | null;
-    max_heart_rate?: number | null;
-    avg_heart_rate?: number | null;
-    max_cadence?: number | null;
-    avg_cadence?: number | null;
-    total_elapsed_time_s?: number | null;
-    total_distance_m?: number | null;
-    total_calories?: number | null;
-  };
-  laps?: Array<{
-    start_ts_utc?: string | null;
-    end_ts_utc?: string | null;
-    total_elapsed_time_s?: number | null;
-    total_timer_time_s?: number | null;
-    total_distance_m?: number | null;
-    avg_speed_m_s?: number | null;
-    max_speed_m_s?: number | null;
-    avg_heart_rate?: number | null;
-    max_heart_rate?: number | null;
-    total_ascent_m?: number | null;
-    total_descent_m?: number | null;
-    avg_cadence?: number | null;
-    max_cadence?: number | null;
-    total_calories?: number | null;
-    best_speed_m_s?: number | null;
-  }>;
-};
-
-/* ── Helpers ─────────────────────────────────────────────────────── */
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.round(seconds % 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatPace(secondsPerUnit: number, unit: string): string {
-  if (!Number.isFinite(secondsPerUnit) || secondsPerUnit <= 0) return "-";
-  const min = Math.floor(secondsPerUnit / 60);
-  const sec = Math.floor(secondsPerUnit % 60);
-  return `${min}:${String(sec).padStart(2, "0")} /${unit}`;
-}
-
-function shortenFileName(name: string, maxLength = 45): string {
-  if (name.length <= maxLength) return name;
-  return `${name.slice(0, maxLength)}...`;
-}
-
-function parseActivityMetadata(raw?: string): ActivityMetadata | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as ActivityMetadata;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function isTauriRuntime(): boolean {
-  return isTauri();
-}
-
-function normalizeSemver(value: string): string | null {
-  const match = value.trim().match(/^v?(\d+\.\d+\.\d+)$/i);
-  return match ? match[1] : null;
-}
-
-function computeRecordStats(records: RecordPoint[]) {
-  let maxSpeed = 0, totalSpeed = 0, speedCount = 0;
-  let maxHr = 0, totalHr = 0, hrCount = 0;
-  let maxAlt = -Infinity;
-  let maxPower = 0, totalPower = 0, powerCount = 0;
-
-  for (const r of records) {
-    if (typeof r.speed_m_s === "number") {
-      const kmh = r.speed_m_s * 3.6;
-      totalSpeed += kmh; speedCount++;
-      if (kmh > maxSpeed) maxSpeed = kmh;
-    }
-    if (typeof r.heart_rate === "number") {
-      totalHr += r.heart_rate; hrCount++;
-      if (r.heart_rate > maxHr) maxHr = r.heart_rate;
-    }
-    if (typeof r.altitude_m === "number" && r.altitude_m > maxAlt) maxAlt = r.altitude_m;
-    if (typeof r.power === "number") {
-      totalPower += r.power; powerCount++;
-      if (r.power > maxPower) maxPower = r.power;
-    }
-  }
-
-  return {
-    avgSpeed: speedCount > 0 ? totalSpeed / speedCount : 0,
-    maxSpeed,
-    avgHr: hrCount > 0 ? totalHr / hrCount : 0,
-    maxHr,
-    maxAlt: maxAlt === -Infinity ? 0 : maxAlt,
-    avgPower: powerCount > 0 ? totalPower / powerCount : 0,
-    maxPower,
-  };
-}
-
-/* ── SVG Icons ───────────────────────────────────────────────────── */
-type Icon = "clock" | "calendar" | "distance" | "speed" | "heart" | "mountain" | "power" | "cadence" | "battery" | "avg" | "flame" | "vo2";
-
-const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-
-function IconDistance() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>;
-}
-function IconMapPin() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>;
-}
-function IconMapPinOff() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 00-10.5-6.1" /><path d="M5.5 5.5A7 7 0 005 10c0 5.5 7 11 7 11" /><circle cx="12" cy="10" r="2.6" /><line x1="3" y1="3" x2="21" y2="21" /></svg>;
-}
-function IconClock() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
-}
-function IconCalendar() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
-}
-function IconSpeed() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z" /></svg>;
-}
-function IconHeart() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>;
-}
-function IconMountain() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="m8 3 4 8 5-5 5 15H2L8 3z" /></svg>;
-}
-function IconAvg() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><line x1="4" y1="20" x2="20" y2="4" /><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /></svg>;
-}
-function IconCadence() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" /><path d="M12 4v3" /><path d="M20 12h-3" /><path d="M12 20v-3" /><path d="M4 12h3" /></svg>;
-}
-function IconBattery() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="2" y="7" width="18" height="10" rx="2" /><line x1="22" y1="11" x2="22" y2="13" /><path d="M8 10l3 2-3 2" /><path d="M14 10v4" /></svg>;
-}
-function IconSearch() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
-}
-function IconSort() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><line x1="6" y1="7" x2="18" y2="7" /><line x1="9" y1="12" x2="18" y2="12" /><line x1="12" y1="17" x2="18" y2="17" /></svg>;
-}
-function IconSortDirection({ direction }: { direction: "asc" | "desc" }) {
-  return direction === "asc"
-    ? <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="7 11 12 6 17 11" /><line x1="12" y1="18" x2="12" y2="7" /></svg>
-    : <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="7 13 12 18 17 13" /><line x1="12" y1="6" x2="12" y2="17" /></svg>;
-}
-function IconMenu() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg>;
-}
-function IconSun() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>;
-}
-function IconMoon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>;
-}
-function IconPaper() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>;
-}
-function IconSettings() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>;
-}
-function IconLogout() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>;
-}
-function IconRefresh() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></svg>;
-}
-function IconChevron() {
-  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>;
-}
-function IconCollapse() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" /></svg>;
-}
-function IconExpand() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg>;
-}
-function IconPower() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M18.36 6.64a9 9 0 11-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>;
-}
-function IconEdit() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>;
-}
-function IconTrash() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>;
-}
-function IconCheck() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="20 6 9 17 4 12" /></svg>;
-}
-function IconX() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
-}
-function IconDownload() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
-}
-function IconFile() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
-}
-function IconBarChart({ size = 32 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
-}
-function IconClipboard() {
-  return <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /></svg>;
-}
-function IconFlame() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z" /></svg>;
-}
-function IconVo2() {
-  return <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M4.882 19q-1.203 0-2.042-.854Q2 17.293 2 16.073v-4.161q0-1.007.433-1.886q.433-.878 1.223-1.487l4.113-3.227q.427-.333.656-.813t.229-1.026V2h1v1.473q0 .546.238 1.026t.672.813l4.094 3.226q.784.61 1.217 1.488q.433.879.433 1.885v.32h-1v-.32q0-.763-.339-1.43t-.927-1.15L11.54 7.375v10.987q-.489-.373-.748-.951q-.258-.578-.252-1.338V6.608L9.154 5.48L7.75 6.608v9.465q.006 1.212-.83 2.07T4.882 19m.009-1q.784 0 1.325-.571t.534-1.356V7.375L4.266 9.331q-.608.483-.937 1.15Q3 11.149 3 11.911v4.162q0 .804.553 1.366q.553.561 1.338.561m8.801 1q-.31 0-.539-.23t-.23-.54v-3.845q0-.31.23-.54t.54-.23h2.346q.309 0 .539.23t.23.54v3.846q0 .31-.23.54q-.23.229-.54.229zm.116-.885h2.115V14.5h-2.115zM18.192 21v-2.366q0-.326.222-.548q.22-.22.548-.22h2.269V16.5h-3.039v-.885h3.154q.327 0 .548.222q.222.22.222.548v1.596q0 .327-.222.548q-.221.221-.548.221h-2.269v1.366h3.038V21zm-4.769-8.315"/></svg>
-}
-
-/* ── Dashboard Component ─────────────────────────────────────────── */
-
 export function Dashboard({ onLogout }: Props) {
-  const [tab, setTab] = useState<"overview" | "individual" | "compare">("overview");
+  const [tab, setTab] = useState<DashboardTab>("overview");
   const [overviewTimeframe, setOverviewTimeframe] = useState<OverviewTimeframe>("all");
   const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(null);
   const [compareIds, setCompareIds] = useState<number[]>([]);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -301,55 +54,17 @@ export function Dashboard({ onLogout }: Props) {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ done: number; total: number } | null>(null);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(true);
-  const [minDurationMinutes, setMinDurationMinutes] = useState("");
-  const [maxDurationMinutes, setMaxDurationMinutes] = useState("");
-  const [dateFrom, setDateFrom] = useState<Date | undefined>();
-  const [dateTo, setDateTo] = useState<Date | undefined>();
-  const [datePickerFromOpen, setDatePickerFromOpen] = useState(false);
-  const [datePickerToOpen, setDatePickerToOpen] = useState(false);
-  const dateFromBtnRef = useRef<HTMLButtonElement>(null);
-  const dateToBtnRef = useRef<HTMLButtonElement>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<{
-    completed: number;
-    total: number;
-    current?: string;
-    currentIndex?: number;
-    status: "processing" | "refreshing";
-  } | null>(null);
-  const [forceBrowserPicker, setForceBrowserPicker] = useState(false);
-  const [isDragActive, setIsDragActive] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "name" | "duration">("date");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [isSortOpen, setIsSortOpen] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Context menu / inline rename-delete state
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; activityId: number; activityName: string;
   } | null>(null);
-  const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
-  const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
-  const [selectedSplitRange, setSelectedSplitRange] = useState<{ startM: number; endM: number } | null>(null);
-  const [splitSummaries, setSplitSummaries] = useState<SplitSummary[]>([]);
-  const [hoverSplitRange, setHoverSplitRange] = useState<{ startM: number; endM: number } | null>(null);
-  const [smoothGraphs, setSmoothGraphs] = useState(true);
-  const [showLaps, setShowLaps] = useState(true);
-  const [showMoreInsights, setShowMoreInsights] = useState(false);
-  const [appVersion, setAppVersion] = useState("unknown");
-  const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
-
-  // Inline rename/delete state
   const [renameTarget, setRenameTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
-    activities, selectedActivity, records, overview,
-    filterSport, setFilterSport, selectActivity, refresh,
-    setActivityOverviewVisibility
+    activities, selectedActivity, records,
+    selectActivity, refresh, setActivityOverviewVisibility,
   } = useActivityStore();
   const {
     distanceUnit, timeFormat, supporterBadge,
@@ -358,138 +73,19 @@ export function Dashboard({ onLogout }: Props) {
   } = useSettingsStore();
   const { t } = useTranslation();
 
-  // Reset the shared playhead when a different activity is selected. The map
-  // reports its position again once the new records are loaded.
-  useEffect(() => {
-    setPlaybackElapsedMs(null);
-    setSelectedSplitRange(null);
-    setHoverSplitRange(null);
-  }, [selectedActivity?.id]);
-
-  // Escape clears the shared split selection from anywhere on the detail view.
-  useEffect(() => {
-    if (tab !== "individual") return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelectedSplitRange(null);
-        setHoverSplitRange(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [tab]);
-
-  useEffect(() => {
-    const close = () => { setContextMenu(null); setBulkExportDropdownOpen(false); setIsSortOpen(false); };
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolveCurrentVersion = async (): Promise<string> => {
-      const fallbackVersion = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "unknown";
-      try {
-        if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-          const { getVersion } = await import("@tauri-apps/api/app");
-          const version = await getVersion();
-          return version || fallbackVersion;
-        }
-      } catch {
-        // Ignore and continue with fallback for web mode or API failures.
-      }
-      return fallbackVersion;
-    };
-
-    const loadVersionStatus = async () => {
-      const current = await resolveCurrentVersion();
-      if (cancelled) return;
-      setAppVersion(current);
-
-      try {
-        const response = await fetch("https://api.github.com/repos/arpanghosh8453/fit-dashboard/releases/latest", {
-          headers: { Accept: "application/vnd.github+json" },
-        });
-        if (!response.ok) throw new Error(`GitHub status ${response.status}`);
-
-        const payload = (await response.json()) as { tag_name?: string };
-        const latest = normalizeSemver(payload.tag_name ?? "");
-        const currentNormalized = normalizeSemver(current);
-        if (!latest || !currentNormalized) {
-          if (!cancelled) {
-            setVersionBadgeStatus({ state: "hidden", latestVersion: null });
-          }
-          return;
-        }
-
-        if (!cancelled) {
-          setVersionBadgeStatus({
-            state: latest === currentNormalized ? "latest" : "update",
-            latestVersion: latest,
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setVersionBadgeStatus({ state: "hidden", latestVersion: null });
-        }
-      }
-    };
-
-    void loadVersionStatus();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const filters = useActivityFilters(activities);
+  const importQueue = useImportQueue();
+  const { filtered } = filters;
 
   useEffect(() => {
     void loadSupporterStatus();
   }, []);
 
-  function parseUtcDate(input: string): Date {
-    const trimmed = input.trim();
-    const normalized = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
-    const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(normalized);
-    return new Date(hasZone ? normalized : `${normalized}Z`);
-  }
-
-  const filtered = useMemo(() => {
-    const minSec = minDurationMinutes ? Number(minDurationMinutes) * 60 : null;
-    const maxSec = maxDurationMinutes ? Number(maxDurationMinutes) * 60 : null;
-    const fromTs = dateFrom ? dateFrom.getTime() : null;
-    const toTs = dateTo ? (dateTo.getTime() + 86399999) : null;
-
-    return activities.filter((a) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        if (!`${a.activity_name} ${a.file_name} ${a.sport}`.toLowerCase().includes(q)) return false;
-      }
-      if (filterSport !== "all" && a.sport !== filterSport) return false;
-      const ts = parseUtcDate(a.start_ts_utc).getTime();
-      if (Number.isFinite(ts)) {
-        if (fromTs !== null && ts < fromTs) return false;
-        if (toTs !== null && ts > toTs) return false;
-      }
-      if (minSec !== null && Number.isFinite(minSec) && a.duration_s < minSec) return false;
-      if (maxSec !== null && Number.isFinite(maxSec) && a.duration_s > maxSec) return false;
-      return true;
-    });
-  }, [activities, filterSport, minDurationMinutes, maxDurationMinutes, dateFrom, dateTo, searchQuery]);
-
-  // Overview panels only show runs within the selected timeframe. The sidebar
-  // list and bulk actions keep using the full `filtered` set.
-  const overviewFiltered = useMemo(() => {
-    if (overviewTimeframe === "all") return filtered;
-    const months = OVERVIEW_TIMEFRAME_MONTHS[overviewTimeframe];
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - months);
-    const cutoffTs = cutoff.getTime();
-    return filtered.filter((a) => {
-      const ts = parseUtcDate(a.start_ts_utc).getTime();
-      return Number.isFinite(ts) && ts >= cutoffTs;
-    });
-  }, [filtered, overviewTimeframe]);
+  useEffect(() => {
+    const close = () => { setContextMenu(null); setBulkExportDropdownOpen(false); };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   // A week selection only makes sense within the current timeframe.
   useEffect(() => {
@@ -504,24 +100,19 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [filtered]);
 
-  const sortedForList = useMemo(() => {
-    const list = [...filtered];
-    list.sort((a, b) => {
-      if (sortBy === "name") {
-        const cmp = (a.activity_name || a.file_name).localeCompare(b.activity_name || b.file_name, undefined, { sensitivity: "base" });
-        return sortDirection === "asc" ? cmp : -cmp;
-      }
-      if (sortBy === "duration") {
-        return sortDirection === "asc" ? a.duration_s - b.duration_s : b.duration_s - a.duration_s;
-      }
-      const aTs = parseUtcDate(a.start_ts_utc).getTime();
-      const bTs = parseUtcDate(b.start_ts_utc).getTime();
-      const aSafe = Number.isFinite(aTs) ? aTs : 0;
-      const bSafe = Number.isFinite(bTs) ? bTs : 0;
-      return sortDirection === "asc" ? aSafe - bSafe : bSafe - aSafe;
+  // Overview panels only show runs within the selected timeframe. The sidebar
+  // list and bulk actions keep using the full `filtered` set.
+  const overviewFiltered = useMemo(() => {
+    if (overviewTimeframe === "all") return filtered;
+    const months = OVERVIEW_TIMEFRAME_MONTHS[overviewTimeframe];
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffTs = cutoff.getTime();
+    return filtered.filter((a) => {
+      const ts = parseUtcDate(a.start_ts_utc).getTime();
+      return Number.isFinite(ts) && ts >= cutoffTs;
     });
-    return list;
-  }, [filtered, sortBy, sortDirection]);
+  }, [filtered, overviewTimeframe]);
 
   // Activities explicitly hidden from the overview map are excluded from the
   // map's default auto-zoom only. They are still rendered as routes/points so
@@ -579,8 +170,6 @@ export function Dashboard({ onLogout }: Props) {
     );
   }, [overviewRecords, selectedWeekStart]);
 
-  const sports = Array.from(new Set(activities.map((a) => a.sport).filter(Boolean)));
-  const selectedRecords = tab === "overview" ? overviewRecords : records;
   const distanceDivisorValue = distanceDivisor(distanceUnit);
   const distanceSuffix = distanceLabel(distanceUnit);
   const filteredTotalDistanceM = overviewFiltered.reduce((sum, a) => sum + a.distance_m, 0);
@@ -588,402 +177,27 @@ export function Dashboard({ onLogout }: Props) {
   const totalDistance = filteredTotalDistanceM / distanceDivisorValue;
   const totalDuration = filteredTotalDurationS;
   const avgDistance = overviewFiltered.length ? totalDistance / overviewFiltered.length : 0;
-  const avgDuration = overviewFiltered.length ? totalDuration / overviewFiltered.length : 0;
-  const recordStats = useMemo(() => computeRecordStats(records), [records]);
 
-  function formatDate(input: string): string {
-    const date = parseUtcDate(input);
-    if (Number.isNaN(date.getTime())) return input;
-    return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/^(\d{2}\s+[A-Za-z]{3})\s+(\d{4})$/, "$1, $2");
-  }
-
-  function formatDateShort(input: string): string {
-    const date = parseUtcDate(input);
-    if (Number.isNaN(date.getTime())) return input;
-    return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/^(\d{2}\s+[A-Za-z]{3})\s+(\d{4})$/, "$1, $2");
-  }
-
-  function formatTimeShort(input: string): string {
-    const date = parseUtcDate(input);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: timeFormat === "12h" });
-  }
-
-  async function waitForUiPaint() {
-    // Two RAF ticks ensure at least one paint happens before heavy async work starts.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  }
-
-  function pushImportProgress(
-    progress: {
-      completed: number;
-      total: number;
-      current?: string;
-      currentIndex?: number;
-      status: "processing" | "refreshing";
-    },
-    message?: string,
-  ) {
-    flushSync(() => {
-      setImportProgress(progress);
-      if (message) setImportMessage(message);
-    });
-  }
-
-  function startImportProgress(total: number) {
-    flushSync(() => {
-      setIsImporting(true);
-      setIsImportOpen(true);
-      setImportProgress({ completed: 0, total, current: "Preparing queue...", status: "processing" });
-      setImportMessage(`Processing 0/${total}`);
-    });
-  }
-
-  async function importFromPaths(paths: string[]) {
-    if (!paths.length || isImporting || isSyncing) return;
-    const validPaths = paths.filter((p) => {
-      const lower = p.toLowerCase();
-      return lower.endsWith(".fit") || lower.endsWith(".tcx") || lower.endsWith(".gpx");
-    });
-    if (!validPaths.length) {
-      setImportMessage("No supported files selected (.fit, .tcx, .gpx).");
-      return;
-    }
-
-    startImportProgress(validPaths.length);
-    await waitForUiPaint();
-    let imported = 0, duplicates = 0, skipped = 0, failed = 0;
-    let refreshError: string | null = null;
-    for (let i = 0; i < validPaths.length; i++) {
-      const path = validPaths[i];
-      const fileName = path.split(/[\\/]/).pop() ?? path;
-      const fileNameDisplay = shortenFileName(fileName);
-      pushImportProgress(
-        { completed: i, total: validPaths.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-        `Processing ${i + 1}/${validPaths.length}: ${fileNameDisplay}`,
-      );
-      await waitForUiPaint();
-      try {
-        const result: any = await api.importActivityPath(path);
-        if (result?.status === "duplicate") {
-          duplicates++;
-        } else if (result?.status === "skipped") {
-          skipped++;
-        } else {
-          imported++;
-          if (imported % 10 === 0) {
-            pushImportProgress(
-              {
-                completed: i + 1,
-                total: validPaths.length,
-                current: `Refreshing after ${imported} successful imports...`,
-                status: "refreshing",
-              },
-              `Imported ${imported} files. Refreshing list and stats...`,
-            );
-            await waitForUiPaint();
-            try {
-              await refresh();
-            } catch (err) {
-              if (!refreshError) refreshError = err instanceof Error ? err.message : "unknown";
-            }
-            pushImportProgress(
-              { completed: i + 1, total: validPaths.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-            );
-            await waitForUiPaint();
-          }
-        }
-      } catch (err) {
-        failed++;
-        setImportMessage(`Failed on ${fileNameDisplay}: ${err instanceof Error ? err.message : "unknown"}`);
-      }
-      pushImportProgress(
-        { completed: i + 1, total: validPaths.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-        `Processed ${i + 1}/${validPaths.length}: ${fileNameDisplay}`,
-      );
-      await waitForUiPaint();
-    }
-
+  async function toggleOverviewVisibility(activity: Activity, visible: boolean) {
     try {
-      pushImportProgress(
-        { completed: validPaths.length, total: validPaths.length, current: "Refreshing activity list...", status: "refreshing" },
-        "Import queue finished, refreshing activity list...",
-      );
-      await waitForUiPaint();
-      await refresh();
+      await api.setActivityOverviewVisibility(activity.id, visible);
+      setActivityOverviewVisibility(activity.id, visible);
     } catch (err) {
-      if (!refreshError) refreshError = err instanceof Error ? err.message : "unknown";
-    }
-    setIsImporting(false);
-    setImportProgress(null);
-    if (refreshError) {
-      setImportMessage(`Batch complete: imported ${imported}, duplicates ${duplicates}, skipped ${skipped}, failed ${failed}. Refresh failed: ${refreshError}`);
-    } else {
-      setImportMessage(`Batch complete: imported ${imported}, duplicates ${duplicates}, skipped ${skipped}, failed ${failed}.`);
+      importQueue.setImportMessage(
+        `Failed to update overview visibility: ${err instanceof Error ? err.message : "unknown"}`
+      );
     }
   }
 
-  function parseDroppedFileUris(raw: string): string[] {
-    return raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"))
-      .map((line) => {
-        if (line.startsWith("file://")) {
-          try {
-            return decodeURIComponent(line.replace(/^file:\/\//, ""));
-          } catch {
-            return line.replace(/^file:\/\//, "");
-          }
-        }
-        return line;
-      });
-  }
-
-  async function handleImportDrop(e: DragEvent<HTMLDivElement>) {
+  function onItemContextMenu(e: MouseEvent, activity: Activity) {
     e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-    if (isImporting || isSyncing) return;
-
-    const fileList = e.dataTransfer.files;
-    if (fileList && fileList.length > 0) {
-      setForceBrowserPicker(false);
-      await importBatch(fileList);
-      return;
-    }
-
-    if (!isTauriRuntime()) {
-      setImportMessage("No supported files dropped (.fit, .tcx, .gpx).");
-      return;
-    }
-
-    const uriList = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
-    if (!uriList) {
-      setImportMessage("No supported files dropped (.fit, .tcx, .gpx).");
-      return;
-    }
-    const paths = parseDroppedFileUris(uriList);
-    await importFromPaths(paths);
-  }
-
-  async function importBatch(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0 || isImporting) return;
-    const files = Array.from(fileList).filter((f) => {
-      const name = f.name.toLowerCase();
-      return name.endsWith(".fit") || name.endsWith(".tcx") || name.endsWith(".gpx");
+    setContextExportOpen(false);
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      activityId: activity.id,
+      activityName: activity.activity_name || activity.file_name,
     });
-    if (!files.length) { setImportMessage("No supported files selected (.fit, .tcx, .gpx)."); return; }
-    startImportProgress(files.length);
-    await waitForUiPaint();
-    let imported = 0, duplicates = 0, skipped = 0, failed = 0;
-    let refreshError: string | null = null;
-    for (let i = 0; i < files.length; i++) {
-      const fileNameDisplay = shortenFileName(files[i].name);
-      pushImportProgress(
-        { completed: i, total: files.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-        `Processing ${i + 1}/${files.length}: ${fileNameDisplay}`,
-      );
-      await waitForUiPaint();
-      try {
-        const result: any = await api.importFit(files[i]);
-        if (result?.status === "duplicate") {
-          duplicates++;
-        } else if (result?.status === "skipped") {
-          skipped++;
-        } else {
-          imported++;
-          if (imported % 10 === 0) {
-            pushImportProgress(
-              {
-                completed: i + 1,
-                total: files.length,
-                current: `Refreshing after ${imported} successful imports...`,
-                status: "refreshing",
-              },
-              `Imported ${imported} files. Refreshing list and stats...`,
-            );
-            await waitForUiPaint();
-            try {
-              await refresh();
-            } catch (err) {
-              if (!refreshError) refreshError = err instanceof Error ? err.message : "unknown";
-            }
-            pushImportProgress(
-              { completed: i + 1, total: files.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-            );
-            await waitForUiPaint();
-          }
-        }
-      } catch (err) {
-        failed++;
-        setImportMessage(`Failed on ${fileNameDisplay}: ${err instanceof Error ? err.message : "unknown"}`);
-      }
-      pushImportProgress(
-        { completed: i + 1, total: files.length, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-        `Processed ${i + 1}/${files.length}: ${fileNameDisplay}`,
-      );
-      await waitForUiPaint();
-    }
-    try {
-      pushImportProgress(
-        { completed: files.length, total: files.length, current: "Refreshing activity list...", status: "refreshing" },
-        "Import queue finished, refreshing activity list...",
-      );
-      await waitForUiPaint();
-      await refresh();
-    } catch (err) {
-      if (!refreshError) refreshError = err instanceof Error ? err.message : "unknown";
-    }
-    setIsImporting(false);
-    setImportProgress(null);
-    if (refreshError) {
-      setImportMessage(`Batch complete: imported ${imported}, duplicates ${duplicates}, skipped ${skipped}, failed ${failed}. Refresh failed: ${refreshError}`);
-    } else {
-      setImportMessage(`Batch complete: imported ${imported}, duplicates ${duplicates}, skipped ${skipped}, failed ${failed}.`);
-    }
   }
-
-  async function importFromDesktopDialog() {
-    if (isImporting || isSyncing) return;
-    setForceBrowserPicker(false);
-    let picked: string | string[] | null = null;
-    try {
-      picked = await open({
-        multiple: true,
-        filters: [
-          { name: "Activity logs", extensions: ["fit", "FIT", "tcx", "TCX", "gpx", "GPX"] },
-          { name: "FIT", extensions: ["fit", "FIT"] },
-          { name: "TCX", extensions: ["tcx", "TCX"] },
-          { name: "GPX", extensions: ["gpx", "GPX"] },
-        ],
-      });
-    } catch (err) {
-      setForceBrowserPicker(true);
-      setImportMessage(
-        `Native file picker unavailable (${err instanceof Error ? err.message : "unknown"}). Falling back to browser picker.`
-      );
-      // Trigger browser picker immediately so users do not need a second click.
-      fileInputRef.current?.click();
-      return;
-    }
-    if (!picked) return;
-
-    const paths = (Array.isArray(picked) ? picked : [picked]).map((p) => p.trim());
-    await importFromPaths(paths);
-  }
-
-  function handleSelectFilesClick() {
-    if (isImporting || isSyncing) return;
-    if (isTauriRuntime() && !forceBrowserPicker) {
-      void importFromDesktopDialog();
-      return;
-    }
-    fileInputRef.current?.click();
-  }
-
-  async function syncFromStorage() {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    try {
-      const paths = await api.listSyncFiles();
-      const total = paths.length;
-      if (total === 0) {
-        setImportMessage("Sync complete: no supported files found.");
-        return;
-      }
-
-      let imported = 0;
-      let duplicates = 0;
-      let blacklisted = 0;
-      let skipped = 0;
-      let failed = 0;
-
-      pushImportProgress(
-        { completed: 0, total, current: "Preparing sync queue...", status: "processing" },
-        `Sync: 0/${total}`
-      );
-      await waitForUiPaint();
-
-      for (let i = 0; i < paths.length; i++) {
-        const path = paths[i];
-        const fileName = path.split(/[\\/]/).pop() ?? path;
-        const fileNameDisplay = shortenFileName(fileName);
-        pushImportProgress(
-          { completed: i, total, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-          `Sync: ${i + 1}/${total} - ${fileNameDisplay}`
-        );
-        await waitForUiPaint();
-
-        try {
-          const result = await api.processSyncFile(path);
-          if (result.status === "imported") {
-            imported++;
-            if (imported % 10 === 0) {
-              pushImportProgress(
-                { completed: i + 1, total, current: `Refreshing after ${imported} successful syncs...`, status: "refreshing" },
-                `Sync: Imported ${imported} files. Refreshing list and stats...`
-              );
-              await waitForUiPaint();
-              try {
-                await refresh();
-              } catch (err) {
-                tracingError("sync intermediate refresh failed", err);
-              }
-              pushImportProgress(
-                { completed: i + 1, total, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-                `Sync: ${i + 1}/${total} - ${fileNameDisplay}`
-              );
-              await waitForUiPaint();
-            }
-          }
-          else if (result.status === "duplicate") duplicates++;
-          else if (result.status === "blacklisted") blacklisted++;
-          else if (result.status === "skipped") skipped++;
-        } catch (err) {
-          failed++;
-          tracingError("sync file processing failed", err);
-        }
-
-        pushImportProgress(
-          { completed: i + 1, total, current: fileNameDisplay, currentIndex: i + 1, status: "processing" },
-          `Sync: ${i + 1}/${total} - ${fileNameDisplay}`
-        );
-        await waitForUiPaint();
-      }
-
-      try {
-        pushImportProgress(
-          {
-            completed: total,
-            total,
-            current: "Refreshing activity list...",
-            status: "refreshing",
-          },
-          "Sync finished, refreshing activity list..."
-        );
-        await refresh();
-      } catch (err) {
-        setImportMessage(`Sync finished, but refresh failed: ${err instanceof Error ? err.message : "unknown"}`);
-        return;
-      }
-      setImportMessage(
-        `Sync complete: scanned ${total}, imported ${imported}, duplicates ${duplicates}, blacklisted ${blacklisted}, skipped ${skipped}, failed ${failed}.`
-      );
-    } catch (err) {
-      setImportMessage(`Sync failed: ${err instanceof Error ? err.message : "unknown"}`);
-    } finally {
-      setImportProgress(null);
-      setIsSyncing(false);
-    }
-  }
-
-  function tracingError(message: string, err: unknown) {
-    console.warn(message, err);
-  }
-
-  /* ── Inline rename/delete ────────────────────────────────────────── */
 
   function onRenameClick() {
     if (!contextMenu) return;
@@ -998,50 +212,6 @@ export function Dashboard({ onLogout }: Props) {
     setRenameTarget(null);
     setContextMenu(null);
   }
-
-  async function toggleOverviewVisibility(activity: Activity, visible: boolean) {
-    try {
-      await api.setActivityOverviewVisibility(activity.id, visible);
-      setActivityOverviewVisibility(activity.id, visible);
-    } catch (err) {
-      setImportMessage(
-        `Failed to update overview visibility: ${err instanceof Error ? err.message : "unknown"}`
-      );
-    }
-  }
-
-  async function confirmRename() {
-    if (!renameTarget || !renameTarget.name.trim()) { setRenameTarget(null); return; }
-    await api.renameActivity(renameTarget.id, renameTarget.name.trim());
-    await refresh();
-    setRenameTarget(null);
-  }
-
-  async function confirmDelete() {
-    if (deleteTarget === null) return;
-    try {
-      await api.deleteActivity(deleteTarget);
-      if (selectedActivity?.id === deleteTarget) await selectActivity(null);
-      await refresh();
-    } catch (err) {
-      setImportMessage(`Delete failed: ${err instanceof Error ? err.message : "unknown"}`);
-      return;
-    }
-    setDeleteTarget(null);
-    setImportMessage("Activity deleted.");
-  }
-
-  function onItemContextMenu(e: MouseEvent, activity: Activity) {
-    e.preventDefault();
-    setContextExportOpen(false);
-    setContextMenu({
-      x: e.clientX, y: e.clientY,
-      activityId: activity.id,
-      activityName: activity.activity_name || activity.file_name,
-    });
-  }
-
-  /* ── Export handlers ─────────────────────────────────────────────── */
 
   async function handleSingleExport(activityId: number, format: ExportFormat) {
     setContextMenu(null);
@@ -1082,7 +252,7 @@ export function Dashboard({ onLogout }: Props) {
     try {
       for (let i = 0; i < filtered.length; i++) {
         flushSync(() => { setBulkDeleteProgress({ done: i, total }); });
-        await waitForUiPaint();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         try {
           await api.deleteActivity(filtered[i].id);
         } catch (err) {
@@ -1092,651 +262,69 @@ export function Dashboard({ onLogout }: Props) {
         }
       }
       flushSync(() => { setBulkDeleteProgress({ done: total, total }); });
-      await waitForUiPaint();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (selectedActivity && filtered.some((a) => a.id === selectedActivity.id)) {
         await selectActivity(null);
       }
       await refresh();
-      setImportMessage(
+      importQueue.setImportMessage(
         failed > 0
           ? `Bulk delete finished with ${failed} failure(s): ${failedReasons.slice(0, 2).join(" | ")}`
           : "Bulk delete completed."
       );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setImportMessage(`Bulk delete completed, but refresh failed: ${detail || "unknown"}`);
+      importQueue.setImportMessage(`Bulk delete completed, but refresh failed: ${detail || "unknown"}`);
     } finally {
       setIsBulkDeleting(false);
       setBulkDeleteProgress(null);
     }
   }
 
-  function clearFilters() {
-    setDateFrom(undefined); setDateTo(undefined);
-    setMinDurationMinutes(""); setMaxDurationMinutes("");
-    setFilterSport("all"); setSearchQuery("");
-  }
-
-  const hasFilters = filterSport !== "all" || dateFrom || dateTo || minDurationMinutes || maxDurationMinutes || searchQuery;
   const contextActivity = contextMenu
     ? activities.find((a) => a.id === contextMenu.activityId) ?? null
     : null;
-  const importDisplayIndex = importProgress
-    ? (importProgress.status === "processing"
-        ? (importProgress.currentIndex ?? importProgress.completed)
-        : importProgress.completed)
-    : 0;
-  const selectedMetadata = useMemo(
-    () => parseActivityMetadata(selectedActivity?.metadata_json),
-    [selectedActivity?.metadata_json]
-  );
-  const lapTimestampsUtc = useMemo(
-    () => (selectedMetadata?.laps ?? [])
-      .map((lap) => lap.start_ts_utc ?? lap.end_ts_utc ?? "")
-      .filter((ts) => !!ts),
-    [selectedMetadata]
-  );
-  // The watch reports average pace using moving/timer time, not elapsed
-  // wall-clock time. `duration_s` from the activity is elapsed (includes
-  // pauses), so prefer the lap timer times when available. This mirrors the
-  // summary row at the bottom of the laps table.
-  const lapSummary = useMemo(() => {
-    const laps = selectedMetadata?.laps ?? [];
-    let distanceM = 0;
-    let timerTimeS = 0;
-    for (const lap of laps) {
-      if (typeof lap.total_distance_m === "number") distanceM += lap.total_distance_m;
-      const lapTime = typeof lap.total_timer_time_s === "number"
-        ? lap.total_timer_time_s
-        : (typeof lap.total_elapsed_time_s === "number" ? lap.total_elapsed_time_s : null);
-      if (lapTime != null) timerTimeS += Math.max(0, lapTime);
-    }
-    return { distanceM, timerTimeS };
-  }, [selectedMetadata]);
-  const overallAvgPaceSec = useMemo(() => {
-    if (lapSummary.distanceM > 0 && lapSummary.timerTimeS > 0) {
-      return lapSummary.timerTimeS / (lapSummary.distanceM / distanceDivisorValue);
-    }
-    if (selectedActivity && selectedActivity.distance_m > 0) {
-      return selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue);
-    }
-    return 0;
-  }, [lapSummary, selectedActivity, distanceDivisorValue]);
-  const detailStats = useMemo(() => {
-    if (!selectedActivity) return [] as Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }>;
-    const out: Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }> = [];
-    const seen = new Set<string>();
-    const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string) => {
-      if (!value || seen.has(key)) return;
-      seen.add(key);
-      out.push({ key, label, value, secondary, icon });
-    };
-
-    const session = selectedMetadata?.session ?? {};
-    const metric = selectedMetadata?.activity_metrics ?? {};
-    const avgPaceText = formatPace(overallAvgPaceSec, distanceSuffix);
-    const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
-    const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
-
-    // Primary stats — always visible, in this order.
-    push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
-    if (avgPaceText !== "-") push("avg_pace", t("detail.avgPace"), avgPaceText, "speed");
-    if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
-    push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
-    if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart");
-    push("date", t("detail.date"), formatDate(selectedActivity.start_ts_utc), "calendar");
-
-    // Secondary stats — hidden behind the "show more" toggle.
-    if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-    if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-    if (maxHr && maxHr > 0) push("max_hr", t("detail.maxHr"), `${Math.round(maxHr)} bpm`, "heart");
-
-    if (recordStats.maxAlt > 0) push("max_alt", t("detail.maxAltitude"), `${convertElevationMeters(recordStats.maxAlt, distanceUnit).toFixed(0)} ${elevationLabel(distanceUnit)}`, "mountain");
-    if (recordStats.avgPower > 0) push("avg_power", t("detail.avgPower"), `${Math.round(recordStats.avgPower)} W`, "power");
-
-    if (typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "cadence");
-    if (typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "cadence");
-    if (typeof session.beginning_body_battery === "number" && typeof session.ending_body_battery === "number") {
-      const delta = session.ending_body_battery - session.beginning_body_battery;
-      const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
-      push(
-        "bb_change",
-        "Body Battery Change",
-        deltaLabel,
-        "battery",
-        `${session.beginning_body_battery} -> ${session.ending_body_battery}`
-      );
-    }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
-    if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
-
-    return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, lapTimestampsUtc.length, overallAvgPaceSec, t]);
-
-  const lapRows = useMemo(() => {
-    const laps = selectedMetadata?.laps ?? [];
-    let cumulativeSeconds = 0;
-    let cumulativeDistanceMeters = 0;
-
-    return laps.map((lap, index) => {
-      const lapTimeSec = typeof lap.total_timer_time_s === "number"
-        ? lap.total_timer_time_s
-        : (typeof lap.total_elapsed_time_s === "number" ? lap.total_elapsed_time_s : null);
-      if (lapTimeSec != null) cumulativeSeconds += Math.max(0, lapTimeSec);
-      const distanceMeters = typeof lap.total_distance_m === "number" ? lap.total_distance_m : null;
-      if (distanceMeters != null) cumulativeDistanceMeters += distanceMeters;
-      const avgPace = lap.avg_speed_m_s && lap.avg_speed_m_s > 0
-        ? formatPace((distanceDivisorValue / lap.avg_speed_m_s), distanceSuffix)
-        : "-";
-      const bestPace = lap.best_speed_m_s && lap.best_speed_m_s > 0
-        ? formatPace((distanceDivisorValue / lap.best_speed_m_s), distanceSuffix)
-        : "-";
-      return {
-        index: index + 1,
-        lapTimeSec,
-        cumulativeSeconds,
-        distanceMeters,
-        cumulativeDistanceMeters,
-        avgPace,
-        avgHr: lap.avg_heart_rate,
-        maxHr: lap.max_heart_rate,
-        ascentMeters: lap.total_ascent_m,
-        descentMeters: lap.total_descent_m,
-        avgCadence: lap.avg_cadence,
-        calories: lap.total_calories,
-        bestPace,
-      };
-    });
-  }, [selectedMetadata?.laps, distanceDivisorValue, distanceSuffix]);
-
-  const rangesMatch = (
-    a: { startM: number; endM: number } | null,
-    b: { startM: number; endM: number },
-  ): boolean =>
-    a != null && Math.abs(a.startM - b.startM) < 0.5 && Math.abs(a.endM - b.endM) < 0.5;
-
-  const toggleSplitRange = (range: { startM: number; endM: number }) => {
-    setSelectedSplitRange((prev) =>
-      rangesMatch(prev, range) ? null : { startM: range.startM, endM: range.endM },
-    );
-  };
-
-  // Map a distance clicked on the chart or map back to the split containing it,
-  // keeping every view in sync.
-  const selectSplitAtDistance = (distanceM: number) => {
-    const range = splitSummaries.find((r) => distanceM >= r.startM - 0.5 && distanceM <= r.endM + 0.5);
-    if (range) toggleSplitRange(range);
-  };
-
-  const lapRangeFor = (lap: { distanceMeters: number | null; cumulativeDistanceMeters: number }) => {
-    if (lap.distanceMeters == null || lap.distanceMeters <= 0) return null;
-    return {
-      startM: Math.max(0, lap.cumulativeDistanceMeters - lap.distanceMeters),
-      endM: lap.cumulativeDistanceMeters,
-    };
-  };
-
-  // The split matching the current selection, when the selection came from a
-  // split (or a lap that aligns with one). Used by the summary chip and map pill.
-  const selectedSplit = selectedSplitRange
-    ? splitSummaries.find((split) => rangesMatch(selectedSplitRange, split)) ?? null
-    : null;
-
-  const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr", "date"];
-  const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
-  const secondaryStats = detailStats.filter((s) => !primaryStatKeys.includes(s.key));
-
-  const renderMiniStat = (s: (typeof detailStats)[number], variant: "primary" | "secondary" = "primary") => (
-    <div key={s.key} className={`mini-stat ${variant === "secondary" ? "mini-stat-muted" : ""}`}>
-      <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
-        {s.icon === "clock" && <IconClock />}
-        {s.icon === "calendar" && <IconCalendar />}
-        {s.icon === "distance" && <IconDistance />}
-        {s.icon === "speed" && <IconSpeed />}
-        {s.icon === "heart" && <IconHeart />}
-        {s.icon === "mountain" && <IconMountain />}
-        {s.icon === "power" && <IconPower />}
-        {s.icon === "cadence" && <IconCadence />}
-        {s.icon === "battery" && <IconBattery />}
-        {s.icon === "avg" && <IconAvg />}
-        {s.icon === "flame" && <IconFlame />}
-        {s.icon === "vo2" && <IconVo2 />}
-      </span>
-      <span className="mini-value">{s.value}</span>
-      <span className="mini-label">{s.label}</span>
-      {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
-    </div>
-  );
 
   return (
     <div className="app-shell">
-      {/* ── Header ───────────────────────────────────────────── */}
-      <header className="app-header">
-        <div className="header-left">
-          <button className="icon-btn sidebar-toggle-btn" onClick={() => setIsSidebarCollapsed((v) => !v)} aria-label={t("sidebar.toggleSidebar")}>
-            <IconMenu />
-          </button>
-          <div className="brand">
-            <div className="brand-icon"><img src={appIcon} alt="FIT Dashboard" className="brand-icon-img" /></div>
-            <div className="brand-text">
-              <h1>
-                FIT Dashboard
-                {supporterBadge && <span className="supporter-badge-inline" title="Supporter Badge Active">{t("header.supporter")}</span>}
-              </h1>
-              <span>{t("header.workoutLogAnalytics")}</span>
-            </div>
-          </div>
-        </div>
-        <div className="header-center">
-          <div className="view-toggle">
-            <button id="tab-overview" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("header.overview")}</button>
-            <button id="tab-individual" className={tab === "individual" ? "active" : ""} onClick={() => setTab("individual")}>{t("header.individual")}</button>
-            <button id="tab-compare" className={tab === "compare" ? "active" : ""} onClick={() => setTab("compare")}>{t("header.compare")}</button>
-          </div>
-        </div>
-        <div className="header-right">
-          <button
-            className="icon-btn"
-            onClick={() => {
-              if (theme === "paper" || theme === "paper-dark") {
-                setTheme(theme === "paper-dark" ? "paper" : "paper-dark");
-              } else {
-                setTheme(theme === "dark" ? "light" : "dark");
-              }
-            }}
-            aria-label="Toggle light or dark mode"
-            title={theme === "dark" || theme === "paper-dark" ? t("header.lightMode") : t("header.darkMode")}
-          >
-            {theme === "dark" || theme === "paper-dark" ? <IconSun /> : <IconMoon />}
-          </button>
-          <button
-            className={`icon-btn ${theme === "paper" || theme === "paper-dark" ? "active" : ""}`}
-            onClick={() => {
-              const isPaper = theme === "paper" || theme === "paper-dark";
-              const isDark = theme === "dark" || theme === "paper-dark";
-              setTheme(isPaper ? (isDark ? "dark" : "light") : (isDark ? "paper-dark" : "paper"));
-            }}
-            aria-label="Toggle paper theme"
-            aria-pressed={theme === "paper" || theme === "paper-dark"}
-            title={theme === "paper" || theme === "paper-dark" ? t("header.standardMode") : t("header.paperMode")}
-          >
-            <IconPaper />
-          </button>
-          <button className="icon-btn" onClick={toggleSettings} aria-label={t("header.settings")} title={t("header.settings")}><IconSettings /></button>
-          <button className="icon-btn" onClick={() => void onLogout()} aria-label={t("header.logout")} title={t("header.logout")}><IconLogout /></button>
-        </div>
-      </header>
+      <AppHeader
+        tab={tab}
+        setTab={setTab}
+        theme={theme}
+        setTheme={setTheme}
+        toggleSettings={toggleSettings}
+        onLogout={onLogout}
+        supporterBadge={supporterBadge}
+        onToggleSidebar={() => setIsSidebarCollapsed((v) => !v)}
+      />
 
-      <SettingsPanel appVersion={appVersion} versionBadgeStatus={versionBadgeStatus} />
+      <SettingsPanel />
 
-      {/* ── Body ─────────────────────────────────────────────── */}
       <div className={`app-body ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-        <div className={`sidebar-mobile-backdrop ${isSidebarCollapsed ? "hidden" : ""}`} onClick={() => setIsSidebarCollapsed(true)} />
+        <Sidebar
+          tab={tab}
+          setTab={setTab}
+          compareIds={compareIds}
+          setCompareIds={setCompareIds}
+          onItemContextMenu={onItemContextMenu}
+          importQueue={importQueue}
+          filters={filters}
+          isSidebarCollapsed={isSidebarCollapsed}
+          setIsSidebarCollapsed={setIsSidebarCollapsed}
+          isExporting={isExporting}
+          bulkExportDropdownOpen={bulkExportDropdownOpen}
+          setBulkExportDropdownOpen={setBulkExportDropdownOpen}
+          onBulkExport={(format) => void handleBulkExport(format)}
+          confirmBulkDelete={confirmBulkDelete}
+          setConfirmBulkDelete={setConfirmBulkDelete}
+          isBulkDeleting={isBulkDeleting}
+          onBulkDelete={() => void handleBulkDelete()}
+          renameTarget={renameTarget}
+          setRenameTarget={setRenameTarget}
+          deleteTarget={deleteTarget}
+          setDeleteTarget={setDeleteTarget}
+        />
 
-        <aside className={`sidebar ${isSidebarCollapsed ? "collapsed" : ""}`}>
-          {/* Collapsed strip (desktop only) */}
-          <div className="sidebar-collapsed-strip">
-            <button className="sidebar-expand-btn" onClick={() => setIsSidebarCollapsed(false)} aria-label={t("sidebar.expandSidebar")} title={t("sidebar.expandSidebar")}>
-              <IconExpand />
-            </button>
-            <span className="sidebar-collapsed-count">{t("sidebar.logsCount", { count: filtered.length })}</span>
-          </div>
-
-          {/* Full sidebar content */}
-          <div className="sidebar-inner">
-            <div className="sidebar-head">
-              <h3>{t("sidebar.activityCenter")}</h3>
-              <button className="sidebar-collapse-btn" onClick={() => setIsSidebarCollapsed(true)} aria-label={t("sidebar.collapseSidebar")}>
-                <IconCollapse />
-              </button>
-            </div>
-
-            {/* Import */}
-            <section className="sidebar-section">
-              <button className={`section-header ${isImportOpen ? "open" : ""} ${isImporting ? "active" : ""}`} onClick={() => {
-                setIsImportOpen((v) => {
-                  const next = !v;
-                  if (next) setIsFilterOpen(false);
-                  return next;
-                });
-              }}>
-                <span className="section-title">{isImporting ? t("sidebar.importingProgress", { current: importDisplayIndex, total: importProgress?.total ?? 0 }) : t("sidebar.importFiles")}</span>
-                <span className="section-header-right"><span className="chevron"><IconChevron /></span></span>
-              </button>
-              {isImportOpen && (
-                <div className="section-body">
-                  <div
-                    className={`import-zone import-dropzone ${isDragActive ? "drag-active" : ""}`}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!isImporting && !isSyncing) setIsDragActive(true);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!isImporting && !isSyncing) setIsDragActive(true);
-                    }}
-                    onDragLeave={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const next = e.relatedTarget as Node | null;
-                      if (!next || !e.currentTarget.contains(next)) {
-                        setIsDragActive(false);
-                      }
-                    }}
-                    onDrop={(e) => { void handleImportDrop(e); }}
-                  >
-                    <input ref={fileInputRef} type="file" accept=".fit,.FIT,.tcx,.TCX,.gpx,.GPX" multiple hidden onChange={(e) => { setForceBrowserPicker(false); void importBatch(e.target.files); e.currentTarget.value = ""; }} />
-                    <div className="import-drop-label">{t("sidebar.dragDrop")}</div>
-                    <div className="import-actions">
-                      <button
-                        className="import-btn"
-                        onClick={handleSelectFilesClick}
-                        disabled={isImporting || isSyncing}
-                      >
-                        {isImporting ? t("sidebar.importing") : t("sidebar.selectFiles")}
-                      </button>
-                      <button
-                        className="btn-secondary import-sync-btn"
-                        onClick={() => void syncFromStorage()}
-                        disabled={isImporting || isSyncing}
-                        aria-label={isSyncing ? t("sidebar.syncInProgress") : t("sidebar.sync")}
-                        title={isSyncing ? t("sidebar.syncInProgress") : t("sidebar.sync")}
-                      >
-                        {isSyncing ? <span className="btn-spinner" aria-hidden="true" /> : <><IconRefresh /> {t("sidebar.sync")}</>}
-                      </button>
-                    </div>
-                    {isImporting && importProgress && (
-                      <div className="import-hint" role="status" aria-live="polite">
-                        {t("sidebar.importQueue", { current: importDisplayIndex, total: importProgress.total })}
-                        {importProgress.current ? ` - ${importProgress.current}` : ""}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* Filters */}
-            <section className="sidebar-section">
-              <button className={`section-header ${isFilterOpen ? "open" : ""} ${hasFilters ? "active" : ""}`} onClick={() => {
-                setIsFilterOpen((v) => {
-                  const next = !v;
-                  if (next) setIsImportOpen(false);
-                  return next;
-                });
-              }}>
-                <span className="section-title-with-action">
-                  <span className="section-title">{hasFilters ? t("sidebar.filterActive") : t("sidebar.filters")}</span>
-                  {hasFilters && (
-                    <button
-                      type="button"
-                      className="section-header-reset"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearFilters();
-                      }}
-                      aria-label={t("sidebar.resetFilters")}
-                      title={t("sidebar.resetFilters")}
-                    >
-                      <IconX />
-                    </button>
-                  )}
-                </span>
-                <span className="section-header-right"><span className="chevron"><IconChevron /></span></span>
-              </button>
-              {isFilterOpen && (
-                <div className="section-body">
-                  <div className="filter-fields">
-                    <label>{t("sidebar.sport")}<select value={filterSport} onChange={(e) => setFilterSport(e.target.value)}>
-                      <option value="all">{t("sidebar.allSports")}</option>
-                      {sports.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select></label>
-                    <label>
-                      {t("sidebar.dateRange")}
-                      <div className="filter-date-wrapper" style={{ display: "flex", gap: "8px" }}>
-                        <div style={{ flex: 1, position: "relative" }}>
-                          <button
-                            className="btn-outline-secondary"
-                            type="button"
-                            ref={dateFromBtnRef}
-                            style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", fontWeight: "normal" }}
-                            onClick={() => setDatePickerFromOpen(!datePickerFromOpen)}
-                          >
-                            {dateFrom ? formatDateShort(dateFrom.toISOString()) : t("sidebar.start")}
-                          </button>
-                          <DatePickerPopover
-                            isOpen={datePickerFromOpen}
-                            onClose={() => setDatePickerFromOpen(false)}
-                            selected={dateFrom}
-                            onSelect={setDateFrom}
-                            anchorRef={dateFromBtnRef}
-                          />
-                        </div>
-                        <div style={{ flex: 1, position: "relative" }}>
-                          <button
-                            className="btn-outline-secondary"
-                            type="button"
-                            ref={dateToBtnRef}
-                            style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", fontWeight: "normal" }}
-                            onClick={() => setDatePickerToOpen(!datePickerToOpen)}
-                          >
-                            {dateTo ? formatDateShort(dateTo.toISOString()) : t("sidebar.end")}
-                          </button>
-                          <DatePickerPopover
-                            isOpen={datePickerToOpen}
-                            onClose={() => setDatePickerToOpen(false)}
-                            selected={dateTo}
-                            onSelect={setDateTo}
-                            anchorRef={dateToBtnRef}
-                          />
-                        </div>
-                      </div>
-                    </label>
-                    <label>
-                      {t("sidebar.durationMinutes")}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
-                        <input style={{ minWidth: 0 }} type="number" min="0" step="1" placeholder={t("sidebar.min")} value={minDurationMinutes} onChange={(e) => setMinDurationMinutes(e.target.value)} />
-                        <span style={{ color: "var(--text-muted)" }}>—</span>
-                        <input style={{ minWidth: 0 }} type="number" min="0" step="1" placeholder={t("sidebar.max")} value={maxDurationMinutes} onChange={(e) => setMaxDurationMinutes(e.target.value)} />
-                      </div>
-                    </label>
-                    <div className="filter-actions"><button className="btn-secondary" style={{ flex: 1 }} onClick={clearFilters}>{t("sidebar.reset")}</button></div>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {importMessage && <div className="import-message">{importMessage}</div>}
-
-            <div className="sidebar-search">
-              <div className="sidebar-search-row">
-                <input id="sidebar-search-input" placeholder={t("sidebar.searchPlaceholder")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <div className="sidebar-sort-controls" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="sidebar-sort-btn"
-                    type="button"
-                    onClick={() => setIsSortOpen((open) => !open)}
-                    aria-label={`Sort activities by ${sortBy}`}
-                    title={t("sidebar.sort")}
-                  >
-                    <IconSort />
-                  </button>
-                  <button
-                    className="sidebar-sort-btn direction"
-                    type="button"
-                    onClick={() => setSortDirection((dir) => (dir === "asc" ? "desc" : "asc"))}
-                    aria-label={`Toggle sort direction: ${sortDirection === "asc" ? "ascending" : "descending"}`}
-                    title={sortDirection === "asc" ? t("sidebar.ascending") : t("sidebar.descending")}
-                  >
-                    <IconSortDirection direction={sortDirection} />
-                  </button>
-                  {isSortOpen && (
-                    <div className="sidebar-sort-dropdown">
-                      <button type="button" className={sortBy === "date" ? "active" : ""} onClick={() => { setSortBy("date"); setIsSortOpen(false); }}>{t("sidebar.sortDate")}</button>
-                      <button type="button" className={sortBy === "name" ? "active" : ""} onClick={() => { setSortBy("name"); setIsSortOpen(false); }}>{t("sidebar.sortName")}</button>
-                      <button type="button" className={sortBy === "duration" ? "active" : ""} onClick={() => { setSortBy("duration"); setIsSortOpen(false); }}>{t("sidebar.sortDuration")}</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="log-count">
-              <span>{t("sidebar.logsSelected", { filtered: filtered.length, total: activities.length })}</span>
-              {hasFilters && <button onClick={clearFilters}>{t("sidebar.clearFilters")}</button>}
-            </div>
-
-            {/* Bulk Actions */}
-            <div className="bulk-actions-bar" onClick={(e) => e.stopPropagation()}>
-              <div className="bulk-export-wrapper">
-                <button className="btn-outline-accent" disabled={filtered.length === 0 || isExporting} onClick={() => setBulkExportDropdownOpen((v) => !v)}>
-                  <IconDownload /> {t("sidebar.exportFiltered")}
-                </button>
-                {bulkExportDropdownOpen && (
-                  <div className="bulk-export-dropdown">
-                    <button onClick={() => { setBulkExportDropdownOpen(false); void handleBulkExport("csv"); }}>CSV</button>
-                    <button onClick={() => { setBulkExportDropdownOpen(false); void handleBulkExport("json"); }}>JSON</button>
-                    <button onClick={() => { setBulkExportDropdownOpen(false); void handleBulkExport("gpx"); }}>GPX</button>
-                    <button onClick={() => { setBulkExportDropdownOpen(false); void handleBulkExport("kml"); }}>KML</button>
-                  </div>
-                )}
-              </div>
-              {!confirmBulkDelete ? (
-                <button className="btn-outline-danger" disabled={filtered.length === 0 || isBulkDeleting} onClick={() => setConfirmBulkDelete(true)}>
-                  <IconTrash /> {t("sidebar.deleteFiltered")}
-                </button>
-              ) : (
-                <div className="bulk-delete-confirm">
-                  <span>{t("sidebar.deleteCount", { count: filtered.length })}</span>
-                  <button className="btn-compact danger" onClick={() => void handleBulkDelete()}><IconCheck /></button>
-                  <button className="btn-compact cancel" onClick={() => setConfirmBulkDelete(false)}><IconX /></button>
-                </div>
-              )}
-            </div>
-
-            {/* Activity List */}
-            <div className="activity-list-box">
-              <div className="activity-list">
-                {sortedForList.map((a) => {
-                const isRenaming = renameTarget?.id === a.id;
-                const isDeleting = deleteTarget === a.id;
-                const isActive = selectedActivity?.id === a.id;
-
-                  return (
-                  <div key={a.id} className={`activity-item ${isActive ? "active" : ""}`}>
-                    {isRenaming ? (
-                      <div className="inline-rename">
-                        <input
-                          autoFocus
-                          value={renameTarget.name}
-                          onChange={(e) => setRenameTarget({ ...renameTarget, name: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void confirmRename();
-                            if (e.key === "Escape") setRenameTarget(null);
-                          }}
-                        />
-                        <div className="inline-actions">
-                          <button className="btn-compact confirm" onClick={() => void confirmRename()} title={t("sidebar.save")}><IconCheck /> {t("sidebar.save")}</button>
-                          <button className="btn-compact cancel" onClick={() => setRenameTarget(null)} title={t("sidebar.cancel")}><IconX /> {t("sidebar.cancel")}</button>
-                        </div>
-                      </div>
-                    ) : isDeleting ? (
-                      <div className="inline-delete-confirm">
-                        <span>{t("sidebar.deleteActivity")}</span>
-                        <div className="inline-actions">
-                          <button className="btn-compact danger" onClick={() => void confirmDelete()}><IconTrash /> {t("sidebar.delete")}</button>
-                          <button className="btn-compact cancel" onClick={() => setDeleteTarget(null)}><IconX /> {t("sidebar.cancel")}</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="activity-item-wrapper" style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 0 }}>
-                        {tab === "compare" && (
-                          <input 
-                            className="compare-checkbox"
-                            type="checkbox" 
-                            checked={compareIds.includes(a.id)}
-                            onChange={(e) => {
-                               if (e.target.checked && compareIds.length < 4) {
-                                  setCompareIds([...compareIds, a.id]);
-                               } else if (!e.target.checked) {
-                                  setCompareIds(compareIds.filter(id => id !== a.id));
-                               }
-                            }}
-                            disabled={!compareIds.includes(a.id) && compareIds.length >= 4}
-                          />
-                        )}
-                        <div
-                          className="activity-item-content"
-                          role="button"
-                          tabIndex={0}
-                          style={{ flex: 1, paddingLeft: tab === "compare" ? "8px" : "" }}
-                          onClick={() => {
-                            if (tab === "compare") {
-                              const checked = compareIds.includes(a.id);
-                              if (!checked && compareIds.length < 4) setCompareIds([...compareIds, a.id]);
-                              else if (checked) setCompareIds(compareIds.filter(id => id !== a.id));
-                            } else {
-                              void selectActivity(a); 
-                              setTab("individual"); 
-                            }
-                          }}
-                          onContextMenu={(e) => onItemContextMenu(e, a)}
-                        >
-                          <span className="activity-name">{a.activity_name || a.file_name}</span>
-                          <div className="activity-meta-rows">
-                            <div className="activity-meta-row" style={{ color: "var(--text-muted)", marginBottom: "4px" }}>
-                              <span>{formatDateShort(a.start_ts_utc)} &bull; {formatTimeShort(a.start_ts_utc)}</span>
-                            </div>
-                            <div className="activity-meta-row" style={{ fontWeight: 600 }}>
-                              <span className="activity-pill">{(a.distance_m / distanceDivisorValue).toFixed(1)} {distanceSuffix}</span>
-                              <span className="spacer" />
-                              <span className="activity-pill">{formatDuration(a.duration_s)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <div className="empty-state" style={{ minHeight: 120, border: "none", padding: "1rem" }}>
-                    <span className="empty-icon"><IconClipboard /></span>
-                    <span>{t("sidebar.noActivitiesMatch")}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="sidebar-footer">
-              <div className="sidebar-footer-left">
-                <span>{t("sidebar.filesImported", { count: activities.length })}</span>
-                {versionBadgeStatus.state === "latest" && (
-                  <span className="version-status-badge latest" title="You are on the latest release">
-                    {t("sidebar.latest")}
-                  </span>
-                )}
-                {versionBadgeStatus.state === "update" && versionBadgeStatus.latestVersion && (
-                  <a
-                    className="version-status-badge update"
-                    href="https://fitdashboard.app"
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    title={`A newer release is available: ${versionBadgeStatus.latestVersion}`}
-                  >
-                    {t("sidebar.updateTo", { version: versionBadgeStatus.latestVersion })}
-                  </a>
-                )}
-              </div>
-              <button onClick={() => void refresh()} title={t("sidebar.refreshData")}><IconRefresh /></button>
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Main Content ───────────────────────────────────── */}
         <main className="main-content">
           <DonationBanner
             supporterBadge={supporterBadge}
@@ -1745,307 +333,45 @@ export function Dashboard({ onLogout }: Props) {
           />
 
           {tab === "overview" ? (
-            activities.length === 0 ? (
-              <div className="empty-state">
-                <span className="empty-icon"><IconBarChart size={40} /></span>
-                <span>{t("overview.importLogsToSee")}</span>
-              </div>
-            ) : (
-            <>
-              <div className="overview-timeframe-filter">
-                <span className="overview-timeframe-label">{t("overview.timeframe")}</span>
-                <div className="overview-timeframe-options" role="group" aria-label={t("overview.timeframe")}>
-                  {OVERVIEW_TIMEFRAMES.map((tf) => (
-                    <button
-                      key={tf}
-                      type="button"
-                      className={overviewTimeframe === tf ? "active" : ""}
-                      aria-pressed={overviewTimeframe === tf}
-                      onClick={() => setOverviewTimeframe(tf)}
-                    >
-                      {t(`overview.timeframe.${tf}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="overview-focus-row">
-                <OverviewLocationMap
-                  records={overviewMapRecords}
-                  activities={overviewMapScope}
-                  fitActivities={overviewMapFitScope}
-                  mapStyle={mapStyle}
-                  setMapStyle={setMapStyle}
-                  onSelectActivity={(activity) => {
-                    void selectActivity(activity);
-                    setTab("individual");
-                  }}
-                />
-                <div className="overview-side-stack">
-                  <div className="overview-compact-stats">
-                    <div className="stat-card"><div className="stat-icon"><IconDistance /></div><div className="stat-value">{totalDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.totalDistance")}</div></div>
-                    <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.totalDuration")}</div></div>
-                    <div className="stat-card"><div className="stat-icon"><IconAvg /></div><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgDistancePerActivity")}</div></div>
-                  </div>
-                  <OverviewWeeklyTrend
-                    activities={overviewFiltered}
-                    distanceUnit={distanceUnit}
-                    theme={theme}
-                    selectedWeekStart={selectedWeekStart}
-                    onSelectWeek={(weekStart) => setSelectedWeekStart(weekStart)}
-                  />
-                </div>
-              </div>
-              {selectedWeekStart && (
-                <OverviewWeekSummary
-                  weekStart={selectedWeekStart}
-                  activities={selectedWeekActivities}
-                  distanceUnit={distanceUnit}
-                  onSelectActivity={(activity) => {
-                    void selectActivity(activity);
-                    setTab("individual");
-                  }}
-                  onClear={() => setSelectedWeekStart(null)}
-                />
-              )}
-              <div className="overview-contribution-row">
-                <div className="overview-contribution-main">
-                  <ActivityContributionHeatmap
-                    activities={overviewFiltered}
-                    highlightedWeekStart={selectedWeekStart}
-                    onSelectActivity={(activity) => {
-                      void selectActivity(activity);
-                      setTab("individual");
-                    }}
-                  />
-                </div>
-                <div className="overview-contribution-side">
-                  <OverviewTrainingPattern activities={overviewFiltered} theme={theme} />
-                </div>
-              </div>
-              <OverviewPersonalRecords
-                activities={overviewFiltered}
-                distanceUnit={distanceUnit}
-                onSelectActivity={(activity) => {
-                  void selectActivity(activity);
-                  setTab("individual");
-                }}
-              />
-              <OverviewActivityTable activities={overviewFiltered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
-            </>
-            )
+            <OverviewView
+              activities={activities}
+              overviewFiltered={overviewFiltered}
+              overviewTimeframe={overviewTimeframe}
+              setOverviewTimeframe={setOverviewTimeframe}
+              overviewMapRecords={overviewMapRecords}
+              overviewMapScope={overviewMapScope}
+              overviewMapFitScope={overviewMapFitScope}
+              mapStyle={mapStyle}
+              setMapStyle={setMapStyle}
+              onSelectActivity={(activity) => {
+                void selectActivity(activity);
+                setTab("individual");
+              }}
+              totalDistance={totalDistance}
+              totalDuration={totalDuration}
+              avgDistance={avgDistance}
+              distanceSuffix={distanceSuffix}
+              distanceUnit={distanceUnit}
+              theme={theme}
+              selectedWeekStart={selectedWeekStart}
+              setSelectedWeekStart={setSelectedWeekStart}
+              selectedWeekActivities={selectedWeekActivities}
+              timeFormat={timeFormat}
+            />
           ) : tab === "compare" ? (
             <CompareCharts compareIds={compareIds} activities={activities} theme={theme} distanceUnit={distanceUnit} />
           ) : selectedActivity ? (
-            <>
-              <div className="detail-header">
-                <div className="detail-identity">
-                  <div className="detail-name-row">
-                    <h2 className="detail-activity-name">{selectedActivity.activity_name || selectedActivity.file_name}</h2>
-                    <button
-                      type="button"
-                      className={`icon-btn detail-overview-toggle ${selectedActivity.show_in_overview === false ? "off" : "active"}`}
-                      onClick={() => void toggleOverviewVisibility(selectedActivity, selectedActivity.show_in_overview === false)}
-                      title={selectedActivity.show_in_overview === false ? t("detail.showInOverviewTooltip") : t("detail.hideFromOverviewTooltip")}
-                      aria-label={selectedActivity.show_in_overview === false ? t("detail.showInOverview") : t("detail.hideFromOverview")}
-                      aria-pressed={selectedActivity.show_in_overview !== false}
-                    >
-                      {selectedActivity.show_in_overview === false ? <IconMapPinOff /> : <IconMapPin />}
-                    </button>
-                  </div>
-                </div>
-                <div className="detail-header-right">
-                  <div className="detail-primary-stats">
-                    {primaryStats.map((s) => renderMiniStat(s))}
-                    {secondaryStats.map((s) => renderMiniStat(s, "secondary"))}
-                  </div>
-                </div>
-              </div>
-              {selectedSplitRange && (
-                <div className="split-summary-chip">
-                  <span className="split-summary-title">
-                    {selectedSplit
-                      ? `${t("splits.split")} ${selectedSplit.index}${selectedSplit.isPartial ? ` (${t("splits.partial")})` : ""}`
-                      : t("splits.title")}
-                  </span>
-                  {selectedSplit ? (
-                    <>
-                      <span className="split-summary-metric">
-                        <span className="split-summary-label">{t("splits.pace")}</span>
-                        <strong>{formatPace((selectedSplit.paceMinPerUnit ?? 0) * 60, distanceSuffix)}</strong>
-                      </span>
-                      <span className="split-summary-metric">
-                        <span className="split-summary-label">{t("splits.time")}</span>
-                        <strong>{formatDuration(selectedSplit.durationS)}</strong>
-                      </span>
-                      {selectedSplit.avgHr != null && (
-                        <span className="split-summary-metric">
-                          <span className="split-summary-label">{t("splits.avgHr")}</span>
-                          <strong>{Math.round(selectedSplit.avgHr)} bpm</strong>
-                        </span>
-                      )}
-                      {selectedSplit.elevationGainM > 0 && (
-                        <span className="split-summary-metric">
-                          <span className="split-summary-label">{t("splits.elevGain")}</span>
-                          <strong>{Math.round(convertElevationMeters(selectedSplit.elevationGainM, distanceUnit))} {elevationLabel(distanceUnit)}</strong>
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="split-summary-metric">
-                      <strong>
-                        {(selectedSplitRange.startM / distanceDivisorValue).toFixed(2)}–{(selectedSplitRange.endM / distanceDivisorValue).toFixed(2)} {distanceSuffix}
-                      </strong>
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className="split-summary-clear"
-                    onClick={() => setSelectedSplitRange(null)}
-                    aria-label={t("splits.clearSelection")}
-                    title={t("splits.clearSelection")}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-              <div className="detail-focus-row">
-                <div className="panel detail-chart-panel">
-                  <div className="detail-chart-toolbar">
-                    <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
-                      <input
-                        type="checkbox"
-                        checked={smoothGraphs}
-                        onChange={(e) => setSmoothGraphs(e.target.checked)}
-                      />
-                      <span>{t("detail.smoothGraphs")}</span>
-                    </label>
-                    <button className="btn-secondary detail-chart-reset-zoom" onClick={() => setTelemetryZoom(null)}>
-                      {t("detail.resetZoom")}
-                    </button>
-                  </div>
-                  <ActivityChart
-                    records={selectedRecords}
-                    theme={theme}
-                    distanceUnit={distanceUnit}
-                    heartRateZoneBoundsBpm={hrZoneBounds}
-                    zoomRange={telemetryZoom}
-                    onZoomChange={setTelemetryZoom}
-                    lapTimestampsUtc={lapTimestampsUtc}
-                    smoothGraphs={smoothGraphs}
-                    playbackElapsedMs={playbackElapsedMs}
-                    highlightRange={hoverSplitRange ?? selectedSplitRange}
-                    onSelectDistance={selectSplitAtDistance}
-                  />
-                </div>
-                <ActivityMap
-                  records={selectedRecords}
-                  mapStyle={mapStyle}
-                  setMapStyle={setMapStyle}
-                  sport={selectedActivity.sport}
-                  lapTimestampsUtc={lapTimestampsUtc}
-                  onPlaybackChange={setPlaybackElapsedMs}
-                  focusRange={selectedSplitRange}
-                  onSelectDistance={selectSplitAtDistance}
-                  focusLabel={selectedSplit ? `${t("splits.split")} ${selectedSplit.index}` : null}
-                  onClearFocus={() => setSelectedSplitRange(null)}
-                />
-              </div>
-              <ActivitySplits
-                records={selectedRecords}
-                theme={theme}
-                distanceUnit={distanceUnit}
-                sport={selectedActivity.sport}
-                overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
-                selectedSplitRange={selectedSplitRange}
-                onSelectSplit={setSelectedSplitRange}
-                onSplitsChange={setSplitSummaries}
-                onHoverSplit={setHoverSplitRange}
-              />
-              {lapRows.length > 0 && (
-                <div className="panel laps-table-panel laps-collapsible">
-                  <button
-                    type="button"
-                    className={`laps-toggle ${showLaps ? "open" : ""}`}
-                    onClick={() => setShowLaps((v) => !v)}
-                    aria-expanded={showLaps}
-                  >
-                    <span>{t("detail.laps")} <span className="laps-toggle-count">({lapRows.length})</span></span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-                  {showLaps && (
-                    <div className="laps-table-wrap">
-                      <table className="laps-table">
-                        <thead>
-                          <tr>
-                            <th>{t("detail.laps")}</th>
-                            <th>{t("detail.time")}</th>
-                            <th>{t("detail.distance")}</th>
-                            <th>{t("detail.avgPace")}</th>
-                            <th>{t("detail.avgHr")}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lapRows.map((lap) => {
-                            const lapRange = lapRangeFor(lap);
-                            const isActive = lapRange != null && rangesMatch(selectedSplitRange, lapRange);
-                            return (
-                              <tr
-                                key={`lap-${lap.index}`}
-                                className={`lap-row ${isActive ? "active" : ""}`}
-                                onClick={() => { if (lapRange) toggleSplitRange(lapRange); }}
-                              >
-                                <td>{lap.index}</td>
-                                <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
-                                <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
-                                <td>{lap.avgPace}</td>
-                                <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr>
-                            <td>{t("detail.summary")}</td>
-                            <td>{formatDuration(lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0))}</td>
-                            <td>{(() => {
-                              const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
-                              return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
-                            })()}</td>
-                            <td>{(() => {
-                              const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
-                              const t = lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0);
-                              return d > 0 && t > 0 ? formatPace((distanceDivisorValue / (d / t)), distanceSuffix) : "-";
-                            })()}</td>
-                            <td>{(() => {
-                              const hrs = lapRows.map(l => l.avgHr).filter((h): h is number => typeof h === "number");
-                              return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : "-";
-                            })()}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="insight-more-toggle-row">
-                <button
-                  type="button"
-                  className={`detail-stats-toggle insight-more-toggle ${showMoreInsights ? "open" : ""}`}
-                  onClick={() => setShowMoreInsights((v) => !v)}
-                  aria-expanded={showMoreInsights}
-                >
-                  <span>{showMoreInsights ? t("insights.hideMore") : t("insights.showMore")}</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-stats-chevron">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-              </div>
-              {showMoreInsights && (
-                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} highlightRange={hoverSplitRange ?? selectedSplitRange} />
-              )}
-            </>
+            <DetailView
+              activity={selectedActivity}
+              records={records}
+              theme={theme}
+              distanceUnit={distanceUnit}
+              timeFormat={timeFormat}
+              hrZoneBounds={hrZoneBounds}
+              mapStyle={mapStyle}
+              setMapStyle={setMapStyle}
+              onToggleOverviewVisibility={(activity, visible) => void toggleOverviewVisibility(activity, visible)}
+            />
           ) : (
             <div className="empty-state">
               <span className="empty-icon"><IconBarChart size={40} /></span>
@@ -2055,77 +381,28 @@ export function Dashboard({ onLogout }: Props) {
         </main>
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
-        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-          <button onClick={onRenameClick}><IconEdit /> {t("contextMenu.rename")}</button>
-          {contextActivity && (
-            <button
-              onClick={() => {
-                void toggleOverviewVisibility(contextActivity, contextActivity.show_in_overview === false);
-                setContextMenu(null);
-              }}
-            >
-              <IconDistance />
-              {contextActivity.show_in_overview === false
-                ? t("contextMenu.showInOverview")
-                : t("contextMenu.hideFromOverview")}
-            </button>
-          )}
-          <button className="ctx-danger" onClick={onDeleteClick}><IconTrash /> {t("contextMenu.delete")}</button>
-          <div className="ctx-divider" />
-          <div className="ctx-export-parent" onMouseEnter={() => setContextExportOpen(true)} onMouseLeave={() => setContextExportOpen(false)}>
-            <button className="ctx-with-submenu"><IconDownload /> {t("contextMenu.export")} <IconChevron /></button>
-            {contextExportOpen && (
-              <div className="ctx-submenu">
-                <button onClick={() => void handleSingleExport(contextMenu.activityId, "csv")}><IconFile /> CSV</button>
-                <button onClick={() => void handleSingleExport(contextMenu.activityId, "json")}><IconFile /> JSON</button>
-                <button onClick={() => void handleSingleExport(contextMenu.activityId, "gpx")}><IconFile /> GPX</button>
-                <button onClick={() => void handleSingleExport(contextMenu.activityId, "kml")}><IconFile /> KML</button>
-              </div>
-            )}
-          </div>
-        </div>
+        <ActivityContextMenu
+          contextMenu={contextMenu}
+          contextActivity={contextActivity}
+          contextExportOpen={contextExportOpen}
+          setContextExportOpen={setContextExportOpen}
+          onRenameClick={onRenameClick}
+          onDeleteClick={onDeleteClick}
+          onToggleOverviewVisibility={(activity) => {
+            void toggleOverviewVisibility(activity, activity.show_in_overview === false);
+            setContextMenu(null);
+          }}
+          onExport={(id, format) => void handleSingleExport(id, format)}
+        />
       )}
 
-      {/* Bulk Operation Progress Overlay */}
-      {(isExporting || isBulkDeleting) && (
-        <div className="bulk-progress-overlay">
-          <div className="bulk-progress-modal">
-            <div className="bulk-progress-title">
-              {isExporting ? (
-                <><IconDownload /> {t("bulk.exportingActivities")}</>
-              ) : (
-                <><IconTrash /> {t("bulk.deletingActivities")}</>
-              )}
-            </div>
-            {isExporting && exportProgress && (
-              <>
-                <div className="bulk-progress-file">{exportProgress.currentFile || t("bulk.finishing")}</div>
-                <div className="bulk-progress-track">
-                  <div className="bulk-progress-fill" style={{ width: `${(exportProgress.done / (exportProgress.total || 1)) * 100}%` }} />
-                </div>
-                <div className="bulk-progress-stats">
-                  <span>{exportProgress.done} of {exportProgress.total}</span>
-                  <span>{Math.round((exportProgress.done / (exportProgress.total || 1)) * 100)}%</span>
-                </div>
-              </>
-            )}
-            {isBulkDeleting && bulkDeleteProgress && (
-              <>
-                <div className="bulk-progress-file">{t("bulk.removingData")}</div>
-                <div className="bulk-progress-track">
-                  <div className="bulk-progress-fill danger" style={{ width: `${(bulkDeleteProgress.done / (bulkDeleteProgress.total || 1)) * 100}%` }} />
-                </div>
-                <div className="bulk-progress-stats">
-                  <span>{bulkDeleteProgress.done} of {bulkDeleteProgress.total}</span>
-                  <span>{Math.round((bulkDeleteProgress.done / (bulkDeleteProgress.total || 1)) * 100)}%</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <BulkProgressOverlay
+        isExporting={isExporting}
+        isBulkDeleting={isBulkDeleting}
+        exportProgress={exportProgress}
+        bulkDeleteProgress={bulkDeleteProgress}
+      />
     </div>
   );
 }
