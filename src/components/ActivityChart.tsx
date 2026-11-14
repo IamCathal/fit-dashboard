@@ -24,6 +24,9 @@ type Props = {
   middleSlot?: ReactNode;
   /** Distance range (metres) to highlight across the charts, e.g. a selected split. */
   highlightRange?: { startM: number; endM: number } | null;
+  /** Called with the distance (metres) under a clicked point, so the parent can
+   *  select the split that contains it. */
+  onSelectDistance?: (distanceM: number) => void;
 };
 
 /** Slider granularity: one second expressed in minutes. */
@@ -44,6 +47,7 @@ export function ActivityChart({
   playbackElapsedMs = null,
   middleSlot,
   highlightRange = null,
+  onSelectDistance,
 }: Props) {
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
@@ -489,6 +493,13 @@ export function ActivityChart({
       if (start !== null && end !== null) {
         onZoomChange?.({ start, end });
       }
+    },
+    click: (params: any) => {
+      if (params?.componentType !== "series") return;
+      const dataIndex = typeof params?.dataIndex === "number" ? params.dataIndex : null;
+      if (dataIndex == null) return;
+      const distance = records[dataIndex]?.distance_m;
+      if (typeof distance === "number") onSelectDistance?.(distance);
     },
   };
 

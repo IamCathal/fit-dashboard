@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
@@ -32,6 +32,10 @@ type Props = {
   selectedSplitRange?: SplitRange | null;
   /** Called when a split bar is pressed. Passing null clears the selection. */
   onSelectSplit?: (range: SplitRange | null) => void;
+  /** Reports the computed split ranges so other views can map a distance to a split. */
+  onSplitsChange?: (ranges: SplitRange[]) => void;
+  /** Called with the hovered split range (or null) for transient highlighting. */
+  onHoverSplit?: (range: SplitRange | null) => void;
 };
 
 type Split = {
@@ -225,6 +229,8 @@ export function ActivitySplits({
   embedded = false,
   selectedSplitRange = null,
   onSelectSplit,
+  onSplitsChange,
+  onHoverSplit,
 }: Props) {
   const { t } = useTranslation();
   const unitMeters = distanceUnit === "mi" ? METERS_PER_MILE : METERS_PER_KILOMETER;
@@ -240,6 +246,17 @@ export function ActivitySplits({
     () => computeSplits(records, unitMeters, splitSize),
     [records, unitMeters, splitSize],
   );
+
+  // Report the split ranges upward so the chart and map can translate a
+  // clicked distance back into the active split. Keep the callback in a ref so
+  // a fresh inline callback from the parent does not re-trigger the effect.
+  const onSplitsChangeRef = useRef(onSplitsChange);
+  useEffect(() => {
+    onSplitsChangeRef.current = onSplitsChange;
+  }, [onSplitsChange]);
+  useEffect(() => {
+    onSplitsChangeRef.current?.(splits.map((split) => ({ startM: split.startM, endM: split.endM })));
+  }, [splits]);
 
   const speeds = useMemo(
     () => splits.map((split) => (split.paceMinPerUnit ? 60 / split.paceMinPerUnit : 0)),
@@ -458,6 +475,14 @@ export function ActivitySplits({
             const split: Split | undefined = params?.data?.split;
             if (!split || !onSelectSplit) return;
             onSelectSplit(isSplitSelected(split) ? null : { startM: split.startM, endM: split.endM });
+          },
+          mouseover: (params: any) => {
+            const split: Split | undefined = params?.data?.split;
+            if (!split || !onHoverSplit) return;
+            onHoverSplit({ startM: split.startM, endM: split.endM });
+          },
+          mouseout: () => {
+            onHoverSplit?.(null);
           },
         }}
         style={{ height: 300, width: "100%", minWidth: 0 }}

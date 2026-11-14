@@ -2280,6 +2280,17 @@ button:focus-visible {
   background: var(--accent-glow);
 }
 
+/* Lap rows are clickable: selecting one highlights the matching map/chart
+   section, mirroring the split-bar interaction. */
+.laps-table tbody tr.lap-row {
+  cursor: pointer;
+}
+
+.laps-table tbody tr.lap-row.active td {
+  background: var(--accent-glow);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .laps-table tfoot {
   position: sticky;
   bottom: 0;

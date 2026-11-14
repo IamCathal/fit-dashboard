@@ -333,6 +333,8 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
   const [selectedSplitRange, setSelectedSplitRange] = useState<{ startM: number; endM: number } | null>(null);
+  const [splitRanges, setSplitRanges] = useState<{ startM: number; endM: number }[]>([]);
+  const [hoverSplitRange, setHoverSplitRange] = useState<{ startM: number; endM: number } | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [showLaps, setShowLaps] = useState(true);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
@@ -361,7 +363,21 @@ export function Dashboard({ onLogout }: Props) {
   useEffect(() => {
     setPlaybackElapsedMs(null);
     setSelectedSplitRange(null);
+    setHoverSplitRange(null);
   }, [selectedActivity?.id]);
+
+  // Escape clears the shared split selection from anywhere on the detail view.
+  useEffect(() => {
+    if (tab !== "individual") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedSplitRange(null);
+        setHoverSplitRange(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tab]);
 
   useEffect(() => {
     const close = () => { setContextMenu(null); setBulkExportDropdownOpen(false); setIsSortOpen(false); };
@@ -1233,6 +1249,33 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [selectedMetadata?.laps, distanceDivisorValue, distanceSuffix]);
 
+  const rangesMatch = (
+    a: { startM: number; endM: number } | null,
+    b: { startM: number; endM: number },
+  ): boolean =>
+    a != null && Math.abs(a.startM - b.startM) < 0.5 && Math.abs(a.endM - b.endM) < 0.5;
+
+  const toggleSplitRange = (range: { startM: number; endM: number }) => {
+    setSelectedSplitRange((prev) =>
+      rangesMatch(prev, range) ? null : { startM: range.startM, endM: range.endM },
+    );
+  };
+
+  // Map a distance clicked on the chart or map back to the split containing it,
+  // keeping every view in sync.
+  const selectSplitAtDistance = (distanceM: number) => {
+    const range = splitRanges.find((r) => distanceM >= r.startM - 0.5 && distanceM <= r.endM + 0.5);
+    if (range) toggleSplitRange(range);
+  };
+
+  const lapRangeFor = (lap: { distanceMeters: number | null; cumulativeDistanceMeters: number }) => {
+    if (lap.distanceMeters == null || lap.distanceMeters <= 0) return null;
+    return {
+      startM: Math.max(0, lap.cumulativeDistanceMeters - lap.distanceMeters),
+      endM: lap.cumulativeDistanceMeters,
+    };
+  };
+
   const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr", "date"];
   const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
   const secondaryStats = detailStats.filter((s) => !primaryStatKeys.includes(s.key));
@@ -1838,10 +1881,11 @@ export function Dashboard({ onLogout }: Props) {
                     lapTimestampsUtc={lapTimestampsUtc}
                     smoothGraphs={smoothGraphs}
                     playbackElapsedMs={playbackElapsedMs}
-                    highlightRange={selectedSplitRange}
+                    highlightRange={hoverSplitRange ?? selectedSplitRange}
+                    onSelectDistance={selectSplitAtDistance}
                   />
                 </div>
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} focusRange={selectedSplitRange} />
+                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} focusRange={selectedSplitRange} onSelectDistance={selectSplitAtDistance} />
               </div>
               <ActivitySplits
                 records={selectedRecords}
@@ -1851,6 +1895,8 @@ export function Dashboard({ onLogout }: Props) {
                 overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
                 selectedSplitRange={selectedSplitRange}
                 onSelectSplit={setSelectedSplitRange}
+                onSplitsChange={setSplitRanges}
+                onHoverSplit={setHoverSplitRange}
               />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel laps-collapsible">
@@ -1878,15 +1924,23 @@ export function Dashboard({ onLogout }: Props) {
                           </tr>
                         </thead>
                         <tbody>
-                          {lapRows.map((lap) => (
-                            <tr key={`lap-${lap.index}`}>
-                              <td>{lap.index}</td>
-                              <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
-                              <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
-                              <td>{lap.avgPace}</td>
-                              <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
-                            </tr>
-                          ))}
+                          {lapRows.map((lap) => {
+                            const lapRange = lapRangeFor(lap);
+                            const isActive = lapRange != null && rangesMatch(selectedSplitRange, lapRange);
+                            return (
+                              <tr
+                                key={`lap-${lap.index}`}
+                                className={`lap-row ${isActive ? "active" : ""}`}
+                                onClick={() => { if (lapRange) toggleSplitRange(lapRange); }}
+                              >
+                                <td>{lap.index}</td>
+                                <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
+                                <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
+                                <td>{lap.avgPace}</td>
+                                <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr>
@@ -1926,7 +1980,7 @@ export function Dashboard({ onLogout }: Props) {
                 </button>
               </div>
               {showMoreInsights && (
-                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} highlightRange={selectedSplitRange} />
+                <ActivityInsights mode="more" records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} playbackElapsedMs={playbackElapsedMs} highlightRange={hoverSplitRange ?? selectedSplitRange} />
               )}
             </>
           ) : (

@@ -3,7 +3,7 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
+import { convertElevationMeters, convertSpeedKmh, elevationLabel, paceLabel, speedLabel } from "../lib/units";
 import { indicesForDistanceRange } from "../lib/distanceRange";
 import { useTranslation } from "../lib/i18n";
 import { isRunSport } from "./ActivityInsights";
@@ -20,6 +20,9 @@ type Props = {
   /** When set, only the route section within this distance range (metres) is
    *  drawn and the map zooms to it. */
   focusRange?: { startM: number; endM: number } | null;
+  /** Called with the distance (metres) under a click on the route, so the
+   *  parent can select the split that contains it. */
+  onSelectDistance?: (distanceM: number) => void;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -166,6 +169,7 @@ function buildColoredGeoJson(
       geometry: { type: "LineString", coordinates: [coords[i], coords[i + 1]] },
       properties: {
         color,
+        distance_m: typeof r.distance_m === "number" ? r.distance_m : null,
         speed_kmh: r.speed_m_s != null ? Math.round(r.speed_m_s * 36) / 10 : 0,
         heart_rate: r.heart_rate ?? 0,
         altitude_m: r.altitude_m != null ? Math.round(r.altitude_m) : 0,
@@ -301,7 +305,7 @@ function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi")
     return Number.isFinite(n) ? n : null;
   };
 
-  const speed = asFiniteNumber(props.speed_kmh);
+  const speedKmh = asFiniteNumber(props.speed_kmh);
   const heartRate = asFiniteNumber(props.heart_rate);
   const altitude = asFiniteNumber(props.altitude_m);
   const cadence = asFiniteNumber(props.cadence);
@@ -311,6 +315,17 @@ function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi")
 
   const fmt2 = (value: number): string => {
     return value.toFixed(2);
+  };
+
+  // Pace is the headline metric for the tooltip; derive it from the segment's
+  // speed so it matches the units shown in the rest of the app.
+  const speedInUnit = speedKmh !== null ? convertSpeedKmh(speedKmh, distanceUnit) : null;
+  const paceMinPerUnit = speedInUnit !== null && speedInUnit > 0 ? 60 / speedInUnit : null;
+  const formatPace = (minPerUnit: number): string => {
+    const totalSeconds = Math.round(minPerUnit * 60);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
   };
 
   const iconSvg = (kind: "speed" | "heart" | "elevation" | "cadence" | "power" | "temp" | "duration") => {
@@ -338,13 +353,10 @@ function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi")
   );
 
   const rows: string[] = [];
-  if (speed !== null && speed > 0) {
-    const speedValue = convertSpeedKmh(speed, distanceUnit);
-    const speedUnit = speedLabel(distanceUnit);
-    rows.push(row("speed", "Speed", `${fmt2(speedValue)} ${speedUnit}`));
-  }
   if (heartRate !== null && heartRate > 0)
     rows.push(row("heart", "Heart", `${fmt2(heartRate)} bpm`));
+  if (paceMinPerUnit !== null && Number.isFinite(paceMinPerUnit))
+    rows.push(row("speed", "Pace", `${formatPace(paceMinPerUnit)} ${paceLabel(distanceUnit)}`));
   if (altitude !== null)
     rows.push(row("elevation", "Elevation", `${fmt2(convertElevationMeters(altitude, distanceUnit))} ${elevationLabel(distanceUnit)}`));
   if (cadence !== null && cadence > 0)
@@ -426,7 +438,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange, focusRange = null }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange, focusRange = null, onSelectDistance }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -457,6 +469,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
   const terrainEnabledRef = useRef(terrainEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
   const focusRangeRef = useRef(focusRange);
+  const onSelectDistanceRef = useRef(onSelectDistance);
   const timelineIndexRef = useRef(timelineIndex);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
@@ -554,6 +567,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
   useEffect(() => { pathColorModeRef.current = pathColorMode; }, [pathColorMode]);
   useEffect(() => { terrainEnabledRef.current = terrainEnabled; }, [terrainEnabled]);
   useEffect(() => { focusRangeRef.current = focusRange; }, [focusRange]);
+  useEffect(() => { onSelectDistanceRef.current = onSelectDistance; }, [onSelectDistance]);
   useEffect(() => {
     telemetryEnabledRef.current = telemetryEnabled;
     if (telemetryEnabled) {
@@ -1036,6 +1050,16 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
     map.on("mouseleave", HIT_LAYER_ID, () => {
       map.getCanvas().style.cursor = "";
       popup.remove();
+    });
+
+    // Clicking the route resolves the nearest segment's cumulative distance so
+    // the parent can toggle the split that contains it.
+    map.on("click", HIT_LAYER_ID, (e) => {
+      const props = e.features?.[0]?.properties as Record<string, any> | undefined;
+      const rawDistance = props?.distance_m;
+      if (rawDistance === null || rawDistance === undefined) return;
+      const distance = Number(rawDistance);
+      if (Number.isFinite(distance)) onSelectDistanceRef.current?.(distance);
     });
 
     return () => {
