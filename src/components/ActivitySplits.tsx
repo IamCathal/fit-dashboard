@@ -32,8 +32,8 @@ type Props = {
   selectedSplitRange?: SplitRange | null;
   /** Called when a split bar is pressed. Passing null clears the selection. */
   onSelectSplit?: (range: SplitRange | null) => void;
-  /** Reports the computed split ranges so other views can map a distance to a split. */
-  onSplitsChange?: (ranges: SplitRange[]) => void;
+  /** Reports the computed splits so other views can map a distance to a split. */
+  onSplitsChange?: (splits: SplitSummary[]) => void;
   /** Called with the hovered split range (or null) for transient highlighting. */
   onHoverSplit?: (range: SplitRange | null) => void;
 };
@@ -48,6 +48,19 @@ type Split = {
   elevationGainM: number;
   elevationLossM: number;
   avgHr: number | null;
+  isPartial: boolean;
+};
+
+/** Compact split description reported to the parent for the summary chip. */
+export type SplitSummary = {
+  index: number;
+  startM: number;
+  endM: number;
+  distanceM: number;
+  durationS: number;
+  paceMinPerUnit: number | null;
+  avgHr: number | null;
+  elevationGainM: number;
   isPartial: boolean;
 };
 
@@ -255,7 +268,17 @@ export function ActivitySplits({
     onSplitsChangeRef.current = onSplitsChange;
   }, [onSplitsChange]);
   useEffect(() => {
-    onSplitsChangeRef.current?.(splits.map((split) => ({ startM: split.startM, endM: split.endM })));
+    onSplitsChangeRef.current?.(splits.map((split) => ({
+      index: split.index,
+      startM: split.startM,
+      endM: split.endM,
+      distanceM: split.distanceM,
+      durationS: split.durationS,
+      paceMinPerUnit: split.paceMinPerUnit,
+      avgHr: split.avgHr,
+      elevationGainM: split.elevationGainM,
+      isPartial: split.isPartial,
+    })));
   }, [splits]);
 
   const speeds = useMemo(
@@ -310,6 +333,10 @@ export function ActivitySplits({
     selectedSplitRange != null &&
     Math.abs(selectedSplitRange.startM - split.startM) < 0.5 &&
     Math.abs(selectedSplitRange.endM - split.endM) < 0.5;
+
+  const selectedSplitIndex = selectedSplitRange
+    ? splits.findIndex((split) => isSplitSelected(split))
+    : -1;
 
   const barData = splits.map((split, index) => {
     const speed = speeds[index];
@@ -395,10 +422,27 @@ export function ActivitySplits({
       splitLine: { lineStyle: { color: gridLine } },
     },
     series: [
+      // Translucent column behind the selected bar so the chosen split reads as
+      // a shaded region, matching the chart/insights highlighting.
+      ...(selectedSplitIndex >= 0
+        ? [{
+            type: "bar" as const,
+            data: splits.map((_, index) => (index === selectedSplitIndex ? axisMax : null)),
+            barMaxWidth: 42,
+            silent: true,
+            tooltip: { show: false },
+            itemStyle: {
+              color: isDark ? "rgba(34, 211, 238, 0.12)" : "rgba(8, 145, 178, 0.10)",
+              borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+            },
+            z: 0,
+          }]
+        : []),
       {
         type: "bar",
         data: barData,
         barMaxWidth: 42,
+        barGap: "-100%",
         cursor: "pointer",
         label: {
           show: true,

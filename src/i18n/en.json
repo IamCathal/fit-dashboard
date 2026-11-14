@@ -409,6 +409,7 @@
   "splits.partial": "partial",
   "splits.showSummary": "Show summary",
   "splits.hideSummary": "Hide summary",
+  "splits.clearSelection": "Clear split selection",
 
   "activityMap.gpsRoute": "GPS Route",
   "activityMap.style": "Style",
@@ -426,6 +427,8 @@
   "activityMap.on": "On",
   "activityMap.off": "Off",
   "activityMap.resetZoom": "Reset zoom",
+  "activityMap.showingFocusedSection": "Focused section",
+  "activityMap.showWholeRoute": "Show whole route",
   "activityMap.timelineTelemetry": "Timeline Telemetry",
   "activityMap.point": "Point",
   "activityMap.time": "Time",

@@ -23,6 +23,10 @@ type Props = {
   /** Called with the distance (metres) under a click on the route, so the
    *  parent can select the split that contains it. */
   onSelectDistance?: (distanceM: number) => void;
+  /** Label for the focused-section pill (e.g. "Split 3"). */
+  focusLabel?: string | null;
+  /** Clears the focused section when the pill button is pressed. */
+  onClearFocus?: () => void;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -438,7 +442,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange, focusRange = null, onSelectDistance }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestampsUtc = [], onPlaybackChange, focusRange = null, onSelectDistance, focusLabel = null, onClearFocus }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -1201,6 +1205,20 @@ export function ActivityMap({ records, mapStyle, setMapStyle, sport, lapTimestam
         <button className="btn-outline-secondary map-reset-zoom-btn" onClick={resetZoomToRoute}>
           {t("activityMap.resetZoom")}
         </button>
+        {focusRange && (
+          <div className="map-focus-pill">
+            <span className="map-focus-pill-label">
+              {focusLabel ?? t("activityMap.showingFocusedSection")}
+            </span>
+            <button
+              type="button"
+              className="map-focus-pill-clear"
+              onClick={() => onClearFocus?.()}
+            >
+              {t("activityMap.showWholeRoute")}
+            </button>
+          </div>
+        )}
         {telemetryEnabled && telemetryData && (
           <div className="telemetry-overlay" aria-live="polite">
             <div className="telemetry-overlay-title">{t("activityMap.timelineTelemetry")}</div>

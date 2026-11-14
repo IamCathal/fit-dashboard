@@ -2,7 +2,7 @@ import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "rea
 import { flushSync } from "react-dom";
 import { useActivityStore } from "../stores/activityStore";
 import { ActivityChart } from "./ActivityChart";
-import { ActivitySplits } from "./ActivitySplits";
+import { ActivitySplits, type SplitSummary } from "./ActivitySplits";
 import { ActivityMap } from "./ActivityMap";
 import { CompareCharts } from "./CompareCharts";
 import { ActivityInsights } from "./ActivityInsights";
@@ -333,7 +333,7 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number | null>(null);
   const [selectedSplitRange, setSelectedSplitRange] = useState<{ startM: number; endM: number } | null>(null);
-  const [splitRanges, setSplitRanges] = useState<{ startM: number; endM: number }[]>([]);
+  const [splitSummaries, setSplitSummaries] = useState<SplitSummary[]>([]);
   const [hoverSplitRange, setHoverSplitRange] = useState<{ startM: number; endM: number } | null>(null);
   const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [showLaps, setShowLaps] = useState(true);
@@ -1264,7 +1264,7 @@ export function Dashboard({ onLogout }: Props) {
   // Map a distance clicked on the chart or map back to the split containing it,
   // keeping every view in sync.
   const selectSplitAtDistance = (distanceM: number) => {
-    const range = splitRanges.find((r) => distanceM >= r.startM - 0.5 && distanceM <= r.endM + 0.5);
+    const range = splitSummaries.find((r) => distanceM >= r.startM - 0.5 && distanceM <= r.endM + 0.5);
     if (range) toggleSplitRange(range);
   };
 
@@ -1275,6 +1275,12 @@ export function Dashboard({ onLogout }: Props) {
       endM: lap.cumulativeDistanceMeters,
     };
   };
+
+  // The split matching the current selection, when the selection came from a
+  // split (or a lap that aligns with one). Used by the summary chip and map pill.
+  const selectedSplit = selectedSplitRange
+    ? splitSummaries.find((split) => rangesMatch(selectedSplitRange, split)) ?? null
+    : null;
 
   const primaryStatKeys = ["distance", "avg_pace", "total_calories", "duration", "avg_hr", "date"];
   const primaryStats = detailStats.filter((s) => primaryStatKeys.includes(s.key));
@@ -1856,6 +1862,54 @@ export function Dashboard({ onLogout }: Props) {
                   </div>
                 </div>
               </div>
+              {selectedSplitRange && (
+                <div className="split-summary-chip">
+                  <span className="split-summary-title">
+                    {selectedSplit
+                      ? `${t("splits.split")} ${selectedSplit.index}${selectedSplit.isPartial ? ` (${t("splits.partial")})` : ""}`
+                      : t("splits.title")}
+                  </span>
+                  {selectedSplit ? (
+                    <>
+                      <span className="split-summary-metric">
+                        <span className="split-summary-label">{t("splits.pace")}</span>
+                        <strong>{formatPace((selectedSplit.paceMinPerUnit ?? 0) * 60, distanceSuffix)}</strong>
+                      </span>
+                      <span className="split-summary-metric">
+                        <span className="split-summary-label">{t("splits.time")}</span>
+                        <strong>{formatDuration(selectedSplit.durationS)}</strong>
+                      </span>
+                      {selectedSplit.avgHr != null && (
+                        <span className="split-summary-metric">
+                          <span className="split-summary-label">{t("splits.avgHr")}</span>
+                          <strong>{Math.round(selectedSplit.avgHr)} bpm</strong>
+                        </span>
+                      )}
+                      {selectedSplit.elevationGainM > 0 && (
+                        <span className="split-summary-metric">
+                          <span className="split-summary-label">{t("splits.elevGain")}</span>
+                          <strong>{Math.round(convertElevationMeters(selectedSplit.elevationGainM, distanceUnit))} {elevationLabel(distanceUnit)}</strong>
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="split-summary-metric">
+                      <strong>
+                        {(selectedSplitRange.startM / distanceDivisorValue).toFixed(2)}–{(selectedSplitRange.endM / distanceDivisorValue).toFixed(2)} {distanceSuffix}
+                      </strong>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="split-summary-clear"
+                    onClick={() => setSelectedSplitRange(null)}
+                    aria-label={t("splits.clearSelection")}
+                    title={t("splits.clearSelection")}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               <div className="detail-focus-row">
                 <div className="panel detail-chart-panel">
                   <div className="detail-chart-toolbar">
@@ -1885,7 +1939,18 @@ export function Dashboard({ onLogout }: Props) {
                     onSelectDistance={selectSplitAtDistance}
                   />
                 </div>
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} sport={selectedActivity.sport} lapTimestampsUtc={lapTimestampsUtc} onPlaybackChange={setPlaybackElapsedMs} focusRange={selectedSplitRange} onSelectDistance={selectSplitAtDistance} />
+                <ActivityMap
+                  records={selectedRecords}
+                  mapStyle={mapStyle}
+                  setMapStyle={setMapStyle}
+                  sport={selectedActivity.sport}
+                  lapTimestampsUtc={lapTimestampsUtc}
+                  onPlaybackChange={setPlaybackElapsedMs}
+                  focusRange={selectedSplitRange}
+                  onSelectDistance={selectSplitAtDistance}
+                  focusLabel={selectedSplit ? `${t("splits.split")} ${selectedSplit.index}` : null}
+                  onClearFocus={() => setSelectedSplitRange(null)}
+                />
               </div>
               <ActivitySplits
                 records={selectedRecords}
@@ -1895,7 +1960,7 @@ export function Dashboard({ onLogout }: Props) {
                 overallAvgPaceSecPerUnit={overallAvgPaceSec > 0 ? overallAvgPaceSec : null}
                 selectedSplitRange={selectedSplitRange}
                 onSelectSplit={setSelectedSplitRange}
-                onSplitsChange={setSplitRanges}
+                onSplitsChange={setSplitSummaries}
                 onHoverSplit={setHoverSplitRange}
               />
               {lapRows.length > 0 && (
